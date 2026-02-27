@@ -2,6 +2,14 @@
 
 A self-hosted birthday tracker with AI-powered gift suggestions and personalized messages. Built with FastAPI, vanilla JavaScript, and OpenAI GPT-4o. Features automated email reminders, user management, and a responsive calendar UI.
 
+![Main birthday tracker screen](./images/tracker1.png)
+
+![Edit a birthday](./images/tracker2.png)
+
+![Settings](./images/tracker3.png)
+
+![User management](./images/tracker4.png)
+
 ## Features
 
 - **Yearly Calendar View** - See all birthdays organized by month
@@ -53,9 +61,10 @@ source .venv/bin/activate
 pip install .
 uvicorn app.main:app --host 0.0.0.0 --port 8081
 ```
+
 </details>
 
-The app will be available at **http://localhost:8081**.
+The app will be available at **<http://localhost:8081>**.
 
 ### Running as a Systemd Service (Linux)
 
@@ -120,6 +129,7 @@ The app can enhance birthday reminder emails with AI-generated personalized cong
 #### How It Works
 
 When AI features are enabled, each birthday reminder email includes:
+
 - A warm, personalized congratulations message tailored to the person
 - 5 gift suggestions based on their name, age, and any notes you've added
 
@@ -239,16 +249,19 @@ ai-birthday-calendar/
 ## Troubleshooting
 
 ### Check Service Status
+
 ```bash
 sudo systemctl status birthdays
 ```
 
 ### View Logs
+
 ```bash
 sudo journalctl -u birthdays -f
 ```
 
 ### Restart the Service
+
 ```bash
 sudo systemctl restart birthdays
 ```
