@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Birthday Tracker</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="screen">
+        <div class="login-container">
+            <h1>🎂 Birthday Tracker</h1>
+            <form id="loginForm">
+                <input type="text" id="username" placeholder="Username" required>
+                <input type="password" id="password" placeholder="Password" required>
+                <button type="submit">Login</button>
+                <div id="loginError" class="error"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main App Screen -->
+    <div id="appScreen" class="screen" style="display: none;">
+        <nav class="navbar">
+            <h1>🎂 Birthday Tracker</h1>
+            <div class="nav-controls">
+                <select id="yearSelector"></select>
+                <button id="todayBtn" class="btn-secondary">Today</button>
+                <button id="settingsBtn" class="btn-secondary">⚙️ Settings</button>
+                <button id="logoutBtn" class="btn-secondary">Logout</button>
+            </div>
+        </nav>
+
+        <div class="main-content">
+            <div class="calendar-container">
+                <div id="calendar"></div>
+            </div>
+            
+            <button id="addBirthdayBtn" class="btn-add">+</button>
+        </div>
+    </div>
+
+    <!-- Birthday Modal -->
+    <div id="birthdayModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modalTitle">Add Birthday</h2>
+            <form id="birthdayForm">
+                <label>Name *</label>
+                <input type="text" id="bdayName" required>
+                
+                <label>Birth Date *</label>
+                <div class="date-inputs">
+                    <select id="bdayMonth" required>
+                        <option value="">Month</option>
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March</option>
+                        <option value="4">April</option>
+                        <option value="5">May</option>
+                        <option value="6">June</option>
+                        <option value="7">July</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                    </select>
+                    <select id="bdayDay" required>
+                        <option value="">Day</option>
+                    </select>
+                </div>
+                
+                <label>Birth Year (optional)</label>
+                <input type="number" id="bdayYear" placeholder="e.g., 1990" min="1900" max="2100">
+                
+                <label>Note (optional)</label>
+                <input type="text" id="bdayNote" placeholder="e.g., Best friend, cousin">
+                
+                <label>Contact Type *</label>
+                <select id="bdayContactType" required>
+                    <option value="Friend">Friend</option>
+                    <option value="Business">Business</option>
+                </select>
+                
+                <div class="modal-buttons">
+                    <button type="submit" class="btn-primary">Save</button>
+                    <button type="button" id="deleteBirthdayBtn" class="btn-danger" style="display: none;">Delete</button>
+                    <button type="button" class="btn-secondary" onclick="closeBirthdayModal()">Cancel</button>
+                </div>
+                <input type="hidden" id="editBirthdayId">
+            </form>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content settings-modal">
+            <span class="close" onclick="closeSettingsModal()">&times;</span>
+            <h2>Settings</h2>
+            
+            <div class="settings-tabs">
+                <button class="tab-button active" onclick="switchTab('email')">📧 Email Notifications</button>
+                <button class="tab-button" onclick="switchTab('users')">👥 User Management</button>
+            </div>
+            
+            <div id="emailTab" class="settings-section tab-content">
+                <h3>Email Notifications</h3>
+                <label>
+                    <input type="checkbox" id="emailEnabled"> Enable email reminders
+                </label>
+                
+                <div id="emailSettings" style="display: none;">
+                    <label>SMTP Server</label>
+                    <input type="text" id="smtpServer" placeholder="smtp.gmail.com">
+                    
+                    <label>SMTP Port</label>
+                    <input type="number" id="smtpPort" value="587">
+                    
+                    <label>Username</label>
+                    <input type="text" id="smtpUsername" placeholder="your-email@gmail.com">
+                    
+                    <label>Password</label>
+                    <input type="password" id="smtpPassword">
+                    
+                    <label>From Email</label>
+                    <input type="email" id="fromEmail" placeholder="your-email@gmail.com">
+                    
+                    <label>Recipients (one per line)</label>
+                    <textarea id="recipients" rows="4" placeholder="recipient1@example.com&#10;recipient2@example.com"></textarea>
+                    
+                    <label>Daily Reminder Time</label>
+                    <input type="time" id="reminderTime" value="09:00">
+                    
+                    <label>
+                        <input type="checkbox" id="testMode"> Test mode (log only, don't send)
+                    </label>
+                </div>
+                
+                <div class="settings-subsection">
+                    <h4>🤖 AI Features (Optional)</h4>
+                    <label>
+                        <input type="checkbox" id="aiEnabled"> Enable AI-generated gift ideas and messages
+                    </label>
+                    
+                    <div id="aiSettings" style="display: none;">
+                        <label>OpenAI API Key</label>
+                        <input type="password" id="openaiApiKey" placeholder="sk-...">
+                        <small style="color: #718096; display: block; margin-top: 5px;">
+                            Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI Platform</a>
+                        </small>
+                        
+                        <button type="button" class="btn-secondary" onclick="testEmailWithAI()" style="margin-top: 15px;">
+                            🤖 Test with AI (Next Birthday)
+                        </button>
+                        <small style="color: #718096; display: block; margin-top: 5px;">
+                            Sends a test email with AI-generated content using your next upcoming birthday
+                        </small>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <button type="button" class="btn-secondary" onclick="testEmail()">Send Test Email</button>
+                </div>
+                
+                <div class="modal-buttons">
+                    <button type="button" class="btn-primary" onclick="saveSettings()">Save Settings</button>
+                    <button type="button" class="btn-secondary" onclick="closeSettingsModal()">Cancel</button>
+                </div>
+            </div>
+            
+            <div id="usersTab" class="settings-section tab-content" style="display: none;">
+                <h3>User Management</h3>
+                
+                <div id="usersList"></div>
+                
+                <button type="button" class="btn-primary" onclick="openCreateUserModal()" style="margin-top: 15px;">+ Add User</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Create User Modal -->
+    <div id="createUserModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeCreateUserModal()">&times;</span>
+            <h2>Create New User</h2>
+            <form id="createUserForm">
+                <label>Username *</label>
+                <input type="text" id="newUsername" required>
+                
+                <label>Password *</label>
+                <input type="password" id="newPassword" required minlength="6">
+                
+                <label>
+                    <input type="checkbox" id="newUserIsAdmin"> Administrator
+                </label>
+                
+                <div class="modal-buttons">
+                    <button type="submit" class="btn-primary">Create User</button>
+                    <button type="button" class="btn-secondary" onclick="closeCreateUserModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Change Password Modal -->
+    <div id="changePasswordModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeChangePasswordModal()">&times;</span>
+            <h2>Change Password</h2>
+            <p>Changing password for: <strong id="passwordChangeUsername"></strong></p>
+            <form id="changePasswordForm">
+                <label>New Password *</label>
+                <input type="password" id="changePasswordInput" required minlength="6" placeholder="Minimum 6 characters">
+                
+                <label>Confirm Password *</label>
+                <input type="password" id="confirmPasswordInput" required minlength="6">
+                
+                <div class="modal-buttons">
+                    <button type="submit" class="btn-primary">Change Password</button>
+                    <button type="button" class="btn-secondary" onclick="closeChangePasswordModal()">Cancel</button>
+                </div>
+                <input type="hidden" id="passwordChangeUsernameHidden">
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

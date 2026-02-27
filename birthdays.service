@@ -1,0 +1,16 @@
+[Unit]
+Description=Birthday Tracker Web Application
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/opt/birthdays
+Environment="PATH=/opt/birthdays/venv/bin"
+EnvironmentFile=/opt/birthdays/.env
+ExecStart=/opt/birthdays/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8081
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
