@@ -1,4 +1,4 @@
-# Birthday Tracker
+# AI Birthday Calendar / Tracker
 
 A self-hosted birthday tracker with AI-powered gift suggestions and personalized messages. Built with FastAPI, vanilla JavaScript, and OpenAI GPT-4o. Features automated email reminders, user management, and a responsive calendar UI.
 
