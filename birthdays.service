@@ -4,11 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
+# Replace YOUR_USER with your actual username (e.g., ubuntu, sascha, etc.)
 User=YOUR_USER
 WorkingDirectory=/opt/birthdays
-Environment="PATH=/opt/birthdays/venv/bin"
+Environment="PATH=/opt/birthdays/.venv/bin"
 EnvironmentFile=/opt/birthdays/.env
-ExecStart=/opt/birthdays/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8081
+# Note: uv creates .venv (not venv) by default
+ExecStart=/opt/birthdays/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8081
 Restart=always
 RestartSec=10
 
