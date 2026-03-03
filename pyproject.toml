@@ -9,6 +9,7 @@ dependencies = [
     "python-multipart>=0.0.6",
     "pydantic>=2.5.0",
     "passlib[bcrypt]>=1.7.4",
+    "bcrypt>=4.0,<5.0",
     "python-jose[cryptography]>=3.3.0",
     "apscheduler>=3.10.4",
     "openai>=1.10.0",
@@ -21,3 +22,13 @@ dev = [
     "httpx>=0.25.0",
     "ruff>=0.4.0",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app", "app.routes"]
+
+[tool.setuptools.package-data]
+app = ["static/**/*"]
