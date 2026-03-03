@@ -525,3 +525,27 @@ body {
     background: #fff7e6;
     color: #fa8c16;
 }
+
+/* Today's Date Indicator */
+.birthday-item.today {
+    border: 3px solid #10b981;
+    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.birthday-item.today .birthday-date {
+    color: #059669;
+    font-weight: 700;
+}
+
+.today-badge {
+    display: inline-block;
+    background: #10b981;
+    color: white;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: 6px;
+    text-transform: uppercase;
+}

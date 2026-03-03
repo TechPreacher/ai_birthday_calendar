@@ -188,12 +188,31 @@ function createBirthdayElement(birthday, nextBirthday = null) {
     }
     
     item.onclick = () => openBirthdayModal(birthday);
+    // Check if this birthday is today
+    const today = new Date();
+    const todayMonth = today.getMonth() + 1; // JavaScript months are 0-indexed
+    const todayDay = today.getDate();
+    const isToday = birthday.month === todayMonth && birthday.day === todayDay;
+    
+    if (isToday) {
+        item.classList.add('today');
+    }
+    
     
     const date = document.createElement('div');
     date.className = 'birthday-date';
     date.textContent = `${MONTHS[birthday.month - 1]} ${birthday.day}`;
     
-    // Add "NEXT!" badge for upcoming birthday
+
+    // Add "TODAY" badge for current day
+    if (isToday) {
+        const todayBadge = document.createElement('span');
+        todayBadge.className = 'today-badge';
+        todayBadge.textContent = 'TODAY';
+        date.appendChild(todayBadge);
+    }
+    
+        // Add "NEXT!" badge for upcoming birthday
     if (isNextBirthday) {
         const badge = document.createElement('span');
         badge.className = 'next-birthday-badge';
