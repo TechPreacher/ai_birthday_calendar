@@ -169,6 +169,48 @@ function renderCalendar() {
                 const item = createBirthdayElement(birthday, nextBirthday);
                 monthCard.appendChild(item);
             });
+
+            // Add today marker if today is in this month but has no birthday
+            const today = new Date();
+            const todayMonth = today.getMonth() + 1;
+            const todayDay = today.getDate();
+            
+            if (month === todayMonth && currentYear === currentYearActual) {
+                // Check if there's already a birthday on today's date
+                const hasBirthdayToday = monthBirthdays.some(b => b.day === todayDay);
+                
+                if (!hasBirthdayToday) {
+                    const todayMarker = createTodayMarker();
+                    
+                    // Insert marker at correct position (sorted by day)
+                    let inserted = false;
+                    const children = Array.from(monthCard.children);
+                    
+                    for (let j = 1; j < children.length; j++) {  // Skip monthTitle at index 0
+                        const child = children[j];
+                        if (child.classList.contains('birthday-item')) {
+                            // Get the day from the birthday-date element
+                            const dateEl = child.querySelector('.birthday-date');
+                            if (dateEl) {
+                                const dayMatch = dateEl.textContent.match(/\d+/);
+                                if (dayMatch) {
+                                    const birthdayDay = parseInt(dayMatch[0]);
+                                    if (todayDay < birthdayDay) {
+                                        monthCard.insertBefore(todayMarker, child);
+                                        inserted = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // If not inserted yet, append at the end
+                    if (!inserted) {
+                        monthCard.appendChild(todayMarker);
+                    }
+            }
+            }
         }
         
         calendar.appendChild(monthCard);
@@ -188,6 +230,7 @@ function createBirthdayElement(birthday, nextBirthday = null) {
     }
     
     item.onclick = () => openBirthdayModal(birthday);
+    
     // Check if this birthday is today
     const today = new Date();
     const todayMonth = today.getMonth() + 1; // JavaScript months are 0-indexed
@@ -198,12 +241,10 @@ function createBirthdayElement(birthday, nextBirthday = null) {
         item.classList.add('today');
     }
     
-    
     const date = document.createElement('div');
     date.className = 'birthday-date';
     date.textContent = `${MONTHS[birthday.month - 1]} ${birthday.day}`;
     
-
     // Add "TODAY" badge for current day
     if (isToday) {
         const todayBadge = document.createElement('span');
@@ -212,7 +253,7 @@ function createBirthdayElement(birthday, nextBirthday = null) {
         date.appendChild(todayBadge);
     }
     
-        // Add "NEXT!" badge for upcoming birthday
+    // Add "NEXT!" badge for upcoming birthday
     if (isNextBirthday) {
         const badge = document.createElement('span');
         badge.className = 'next-birthday-badge';
@@ -253,6 +294,25 @@ function createBirthdayElement(birthday, nextBirthday = null) {
     
     return item;
 }
+
+function createTodayMarker() {
+    const today = new Date();
+    const marker = document.createElement('div');
+    marker.className = 'today-marker';
+    
+    const date = document.createElement('div');
+    date.className = 'today-marker-date';
+    date.textContent = `Today - ${MONTHS[today.getMonth()]} ${today.getDate()}`;
+    
+    const badge = document.createElement('span');
+    badge.className = 'today-badge';
+    badge.textContent = 'TODAY';
+    date.appendChild(badge);
+    
+    marker.appendChild(date);
+    return marker;
+}
+
 
 // Modal functions
 function openBirthdayModal(birthday = null) {

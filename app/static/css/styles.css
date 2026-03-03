@@ -549,3 +549,27 @@ body {
     margin-left: 6px;
     text-transform: uppercase;
 }
+
+/* Today Marker (for days with no birthdays) */
+.today-marker {
+    margin: 12px 0;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    border-left: 4px solid #10b981;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.today-marker-date {
+    color: #059669;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.today-marker .today-badge {
+    font-size: 9px;
+}
