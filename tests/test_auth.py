@@ -14,6 +14,26 @@ from app.auth import (
 from app.models import User
 
 
+class TestOverLongPasswordVerification:
+    """bcrypt raises above 72 bytes; verify must not let that become a 500."""
+
+    def test_verify_returns_false_instead_of_raising(self):
+        hashed = get_password_hash("correct-horse")
+        assert verify_password("x" * 200, hashed) is False
+
+    def test_a_password_at_the_limit_still_verifies(self):
+        password = "a" * 72
+        assert verify_password(password, get_password_hash(password)) is True
+
+    def test_login_with_an_over_long_password_is_401_not_500(self, client):
+        """/api/auth/token is public, so anyone could reach this error path."""
+        response = client.post(
+            "/api/auth/token",
+            data={"username": "admin", "password": "x" * 200},
+        )
+        assert response.status_code == 401
+
+
 class TestPasswordHashing:
     def test_hash_and_verify(self):
         hashed = get_password_hash("mypassword")

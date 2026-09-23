@@ -96,6 +96,12 @@ class PasswordChange(BaseModel):
 
     password: Password
 
+    # Required when changing your own password, ignored when an admin changes
+    # someone else's. Deliberately a plain str rather than the Password type:
+    # it is an existing password being checked, and applying today's policy to
+    # it could reject an account whose password predates the rules.
+    current_password: Optional[str] = None
+
 
 class UserResponse(BaseModel):
     """User response (without password)."""
