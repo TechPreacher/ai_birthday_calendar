@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 
-from ..models import Token, User, UserCreate, UserResponse
+from ..models import PasswordChange, Token, User, UserCreate, UserResponse
 from ..auth import (
     authenticate_user,
     create_access_token,
@@ -82,25 +82,20 @@ async def create_user(
 @router.put("/users/{username}/password")
 async def change_user_password(
     username: str,
-    password_data: dict,
+    password_data: PasswordChange,
     current_user: User = Depends(get_current_active_user),
 ):
     """Change a user's password (admin only)."""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    new_password = password_data.get("password")
-    if not new_password or len(new_password) < 6:
-        raise HTTPException(
-            status_code=400, detail="Password must be at least 6 characters"
-        )
-
     user = user_storage.get_by_username(username)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Update password
-    user.hashed_password = get_password_hash(new_password)
+    # Length is validated by the Password type on PasswordChange, so the value
+    # is guaranteed to be within bcrypt's 72-byte limit before it is hashed.
+    user.hashed_password = get_password_hash(password_data.password)
     user_storage.update(username, user)
 
     return {"message": f"Password updated for {username}"}

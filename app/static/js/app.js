@@ -39,6 +39,36 @@ async function apiFetch(url, options = {}) {
     return response;
 }
 
+// FastAPI reports an HTTPException as a string `detail`, but a validation
+// failure (422) as a LIST of objects. Concatenating that straight into a
+// message renders "[object Object]", so pull the readable text out of either
+// shape.
+function errorText(body, fallback = 'Unknown error') {
+    const detail = body && body.detail;
+
+    if (typeof detail === 'string') {
+        return detail;
+    }
+
+    if (Array.isArray(detail)) {
+        const messages = detail
+            .map(d => {
+                const msg = (d && d.msg) ? String(d.msg).replace(/^Value error,\s*/, '') : '';
+                const field = (d && Array.isArray(d.loc)) ? d.loc[d.loc.length - 1] : null;
+                if (!msg) return '';
+                // Field names only help when they are not the generic "body".
+                return (field && field !== 'body') ? `${field}: ${msg}` : msg;
+            })
+            .filter(Boolean);
+
+        if (messages.length) {
+            return messages.join('\n');
+        }
+    }
+
+    return fallback;
+}
+
 function handleSessionExpired() {
     if (sessionExpiredHandled) {
         return;
@@ -638,7 +668,7 @@ async function testEmail() {
             alert('Test email triggered. Check your email!');
         } else {
             const error = await response.json();
-            alert('Failed to send test email: ' + (error.detail || 'Unknown error'));
+            alert('Failed to send test email: ' + errorText(error));
         }
     } catch (error) {
         if (error instanceof SessionExpiredError) return;
@@ -668,7 +698,7 @@ async function testEmailWithAI(button) {
             alert(`AI test email sent!\n\nTested with: ${result.birthday_tested}\nDays until birthday: ${result.days_until}\n\nCheck your inbox for the AI-enhanced birthday reminder!`);
         } else {
             const error = await response.json();
-            alert('Failed to send AI test email:\n' + (error.detail || 'Unknown error'));
+            alert('Failed to send AI test email:\n' + errorText(error));
         }
     } catch (error) {
         if (error instanceof SessionExpiredError) return;
@@ -872,7 +902,7 @@ async function handleCreateUser(e) {
             await loadUsers();
         } else {
             const error = await response.json();
-            alert('Failed to create user: ' + (error.detail || 'Unknown error'));
+            alert('Failed to create user: ' + errorText(error));
         }
     } catch (error) {
         if (error instanceof SessionExpiredError) return;
@@ -929,7 +959,7 @@ async function handleChangePassword(e) {
             }
         } else {
             const error = await response.json();
-            alert('Failed to change password: ' + (error.detail || 'Unknown error'));
+            alert('Failed to change password: ' + errorText(error));
         }
     } catch (error) {
         if (error instanceof SessionExpiredError) return;
@@ -953,7 +983,7 @@ async function deleteUser(username) {
             await loadUsers();
         } else {
             const error = await response.json();
-            alert('Failed to delete user: ' + (error.detail || 'Unknown error'));
+            alert('Failed to delete user: ' + errorText(error));
         }
     } catch (error) {
         if (error instanceof SessionExpiredError) return;

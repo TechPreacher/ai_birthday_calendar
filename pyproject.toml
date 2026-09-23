@@ -8,8 +8,11 @@ dependencies = [
     "uvicorn[standard]>=0.24.0",
     "python-multipart>=0.0.6",
     "pydantic>=2.5.0",
-    "passlib[bcrypt]>=1.7.4",
-    "bcrypt>=4.0,<5.0",
+    # bcrypt ignores everything past 72 bytes of a password. 4.x truncates
+    # silently, so two different long passwords can share a hash; 5.x raises
+    # instead. The API rejects over-long passwords before hashing, and this
+    # floor keeps the library's own refusal as a backstop.
+    "bcrypt>=5.0",
     "python-jose[cryptography]>=3.3.0",
     "apscheduler>=3.10.4",
     "openai>=1.10.0",
