@@ -10,6 +10,10 @@ __pycache__/
 # Environment
 .env
 
+# Host-specific deployment notes (names this server's domain, accounts and uids).
+# The Dockerfile, compose.yml and deploy/ template are generic and are tracked.
+DEPLOY.md
+
 # Data files (contains personal information)
 data/users.json
 data/settings.json

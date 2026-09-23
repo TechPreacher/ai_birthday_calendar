@@ -26,11 +26,12 @@ A self-hosted birthday tracker with AI-powered gift suggestions and personalized
 
 - **Backend:** FastAPI (Python 3.10+)
 - **Frontend:** Vanilla JavaScript, HTML5, CSS3
-- **Storage:** JSON files (no database required)
+- **Storage:** JSON files, written atomically (no database required)
 - **Authentication:** JWT tokens with bcrypt password hashing
 - **Scheduling:** APScheduler for automated email reminders
 - **Email:** SMTP (Gmail compatible)
 - **AI:** OpenAI GPT-4o (optional)
+- **Deployment:** Docker Compose, or systemd on the host
 
 ## Installation
 
@@ -66,7 +67,70 @@ uvicorn app.main:app --host 0.0.0.0 --port 8081
 
 The app will be available at **<http://localhost:8081>**.
 
+### Docker Compose (recommended for servers)
+
+A `Dockerfile` and `compose.yml` are included. This is the easiest way to run the
+app on a server: dependencies are installed from `uv.lock` inside a pinned
+Python 3.12 image, so the host's Python version is irrelevant, and no root access
+is needed beyond membership of the `docker` group.
+
+```bash
+cp .env.example .env
+# Set BIRTHDAYS_SECRET_KEY to a long random string and choose admin credentials.
+# Leave BIRTHDAYS_DATA_DIR out -- compose.yml sets it to the container path.
+
+docker compose up -d --build
+```
+
+The container publishes to **127.0.0.1:8081** only, on the assumption that a
+reverse proxy terminates TLS in front of it (see below). Data lives in `./data`
+on the host via a bind mount, so it stays visible for backups.
+
+Two things to adjust for your environment:
+
+- **`TZ` in `compose.yml`** (default `Europe/Zurich`). APScheduler interprets the
+  daily reminder time in the container's local timezone; without this the
+  container runs in UTC and reminders fire at the wrong hour.
+- **The container runs as uid 1000**, so the bind-mounted `./data` is writable by
+  it and readable by a typical first user account. If your account has a
+  different uid, change it in the `Dockerfile` or add a `user:` line to
+  `compose.yml`.
+
+Everyday commands:
+
+```bash
+docker compose ps
+docker compose logs -f
+docker compose restart
+docker compose up -d --build     # after changing app code or dependencies
+```
+
+`restart: unless-stopped` starts the app again after a reboot, so no systemd unit
+is needed.
+
+<details>
+<summary>Reverse proxy example (nginx + Let's Encrypt)</summary>
+
+A template is included at `deploy/nginx-birthdays.corti.com.conf` — rename it for
+your own domain. It proxies `https://your.domain` to `127.0.0.1:8081`.
+
+```bash
+sudo cp deploy/nginx-<your-domain>.conf /etc/nginx/sites-available/<your-domain>
+sudo ln -s /etc/nginx/sites-available/<your-domain> /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d <your-domain> --redirect
+```
+
+The DNS record must already point at the host before running certbot, or the
+HTTP-01 challenge will fail. Note that `nginx -t` needs `sudo`, because
+validation opens the TLS private keys.
+
+</details>
+
 ### Running as a Systemd Service (Linux)
+
+An alternative to Docker, if you would rather run the app directly on the host.
+Note that this ties the app to the host's Python version.
 
 Before installing, edit `birthdays.service` and replace `YOUR_USER` with the user account that should run the service. Also update the paths if you installed to a directory other than `/opt/birthdays`.
 
@@ -101,6 +165,17 @@ BIRTHDAYS_ADMIN_PASSWORD=changeme
 ```
 
 After changing credentials, restart the application.
+
+**Under Docker, omit `BIRTHDAYS_DATA_DIR`.** `compose.yml` sets it to the
+container path (`/data`), which is where `./data` is bind-mounted. A host path
+left in `.env` would be meaningless inside the container. Compose's
+`environment:` takes precedence over `env_file:`, so a stale value would be
+ignored rather than break anything — but leaving it out avoids the confusion.
+
+`BIRTHDAYS_ADMIN_USERNAME` and `BIRTHDAYS_ADMIN_PASSWORD` only **seed** the admin
+account, and only when no `admin` user exists in `users.json` yet. Once the
+account is created, changing these values in `.env` has no effect — change the
+password through the web UI instead.
 
 ### Email Notifications
 
@@ -208,7 +283,21 @@ All data is stored as JSON files in your configured data directory:
 - `users.json` - User accounts and password hashes
 - `settings.json` - Email and AI settings
 
-**Backup recommendation:** Regularly back up your data directory.
+Writes are atomic: each file is written to a temporary file in the same
+directory, flushed to disk, then moved into place with `os.replace()`. A reader
+therefore sees either the complete old file or the complete new one, and a crash
+mid-write cannot truncate the file and lose every record. Each write also
+re-applies mode `600`, because the atomic replace creates a new inode that would
+otherwise take its permissions from the process umask.
+
+**Backup recommendation:** Regularly back up your data directory. Because writes
+are atomic, a plain `tar` of the data directory is safe while the app is running
+— there is no need to stop it first.
+
+```bash
+tar czf birthdays-data-$(date +%F).tar.gz -C /path/to/app data
+chmod 600 birthdays-data-*.tar.gz   # the archive contains the same secrets
+```
 
 ## API Documentation
 
@@ -238,10 +327,14 @@ ai-birthday-calendar/
 │       └── js/
 │           └── app.js    # Frontend logic
 ├── data/                 # JSON data files (created at runtime)
+├── deploy/               # Reverse proxy config template
 ├── tests/                # Test suite
 ├── pyproject.toml        # Python dependencies
 ├── uv.lock               # Dependency lock file
-├── birthdays.service     # Systemd service file
+├── Dockerfile            # Container image (Python 3.12, deps from uv.lock)
+├── compose.yml           # Docker Compose service definition
+├── .dockerignore
+├── birthdays.service     # Systemd service file (alternative to Docker)
 ├── install.sh            # Installation helper script
 └── .env.example          # Environment variable template
 ```
@@ -251,19 +344,31 @@ ai-birthday-calendar/
 ### Check Service Status
 
 ```bash
-sudo systemctl status birthdays
+docker compose ps                    # Docker
+sudo systemctl status birthdays      # systemd
 ```
 
 ### View Logs
 
 ```bash
-sudo journalctl -u birthdays -f
+docker compose logs -f               # Docker
+sudo journalctl -u birthdays -f      # systemd
 ```
 
 ### Restart the Service
 
 ```bash
-sudo systemctl restart birthdays
+docker compose restart               # Docker
+sudo systemctl restart birthdays     # systemd
+```
+
+### Changes to the Code Not Taking Effect
+
+Under Docker the application code is baked into the image, so a plain restart
+will not pick up edits. Rebuild instead:
+
+```bash
+docker compose up -d --build
 ```
 
 ### Email Not Sending
@@ -283,10 +388,24 @@ sudo systemctl restart birthdays
 ## Security Notes
 
 - Change the default admin password immediately after setup
-- Set `BIRTHDAYS_SECRET_KEY` to a long random string
+- Set `BIRTHDAYS_SECRET_KEY` to a long random string. Anyone who can read it can
+  forge a login token, so keep `.env` at mode `600`
 - Passwords are hashed with bcrypt
 - Consider running behind a reverse proxy (Nginx/Caddy) with HTTPS for production use
-- The OpenAI API key is stored in `data/settings.json` -- restrict file permissions accordingly
+- The SMTP password and OpenAI API key are stored in `data/settings.json`. The
+  app writes its data files as `600`, but set the directory itself to `700` if
+  the machine has other user accounts:
+
+  ```bash
+  chmod 700 data
+  chmod 600 .env data/*.json
+  ```
+
+- `/docs` and `/openapi.json` are served without authentication. The endpoints
+  behind them require a token, but pass `docs_url=None, redoc_url=None` to
+  `FastAPI()` in `app/main.py` if you would rather not advertise the API surface
+- There is no rate limiting on `/api/auth/token`. If the app is exposed to the
+  internet, add a `limit_req` zone for that endpoint in your reverse proxy
 
 ## License
 

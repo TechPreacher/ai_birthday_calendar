@@ -1,5 +1,7 @@
 """Tests for API endpoints."""
 
+import pytest
+
 
 class TestHealthAndRoot:
     def test_health_check(self, client):
@@ -99,6 +101,52 @@ class TestUserManagement:
         )
         assert response.status_code == 403
 
+    @pytest.mark.parametrize(
+        "username",
+        [
+            "a/b",  # a slash makes DELETE /users/{username} unroutable
+            "",  # empty name cannot be addressed as a path segment at all
+            "a b",  # space
+            "a?b",  # query separator
+            "a#b",  # fragment separator
+            "../admin",  # path traversal attempt
+            "x" * 65,  # over the length limit
+        ],
+    )
+    def test_create_user_rejects_unroutable_username(
+        self, client, admin_headers, username
+    ):
+        """Usernames must be safe as a single URL path segment.
+
+        A name containing "/" (or an empty one) produced an account that could
+        never be deleted through the API, because no route could match it.
+        """
+        response = client.post(
+            "/api/auth/users",
+            json={"username": username, "password": "pass123456"},
+            headers=admin_headers,
+        )
+        assert response.status_code == 422
+
+        # And it must not have been created as a side effect.
+        listed = client.get("/api/auth/users", headers=admin_headers).json()
+        assert username not in [u["username"] for u in listed]
+
+    def test_created_user_is_always_deletable(self, client, admin_headers):
+        """Whatever a valid username looks like, it round-trips through a URL."""
+        for username in ["plain", "with.dot", "with-dash", "with_underscore", "MiXed123"]:
+            created = client.post(
+                "/api/auth/users",
+                json={"username": username, "password": "pass123456"},
+                headers=admin_headers,
+            )
+            assert created.status_code == 200, username
+
+            deleted = client.delete(
+                f"/api/auth/users/{username}", headers=admin_headers
+            )
+            assert deleted.status_code == 200, username
+
     def test_change_password(self, client, admin_headers):
         # Create a user first
         client.post(
@@ -181,6 +229,37 @@ class TestBirthdayAPI:
         assert data["day"] == 15
         assert data["id"] is not None
         assert data["contact_type"] == "Friend"
+
+    @pytest.mark.parametrize("name", ["", "   "])
+    def test_create_birthday_rejects_blank_name(self, client, admin_headers, name):
+        """A blank name renders as an empty, unclickable row in the calendar."""
+        response = client.post(
+            "/api/birthdays",
+            json={"name": name, "month": 3, "day": 15},
+            headers=admin_headers,
+        )
+        assert response.status_code == 422
+        assert client.get("/api/birthdays", headers=admin_headers).json() == []
+
+    def test_update_birthday_rejects_blank_name(self, client, admin_headers):
+        created = client.post(
+            "/api/birthdays",
+            json={"name": "Alice", "month": 3, "day": 15},
+            headers=admin_headers,
+        ).json()
+
+        response = client.put(
+            f"/api/birthdays/{created['id']}",
+            json={"name": ""},
+            headers=admin_headers,
+        )
+        assert response.status_code == 422
+
+        # The original name must survive the rejected update.
+        unchanged = client.get(
+            f"/api/birthdays/{created['id']}", headers=admin_headers
+        ).json()
+        assert unchanged["name"] == "Alice"
 
     def test_create_birthday_full(self, client, admin_headers):
         response = client.post(

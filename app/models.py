@@ -1,7 +1,14 @@
 """Data models."""
 
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Annotated, Optional
+from pydantic import BaseModel, Field, StringConstraints
+
+# A person's name, as accepted from a client. Whitespace is stripped first, so
+# a name of only spaces is rejected rather than stored -- it would otherwise
+# render as an empty, unclickable row in the calendar.
+BirthdayName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+]
 
 
 class Token(BaseModel):
@@ -29,7 +36,14 @@ class User(BaseModel):
 class UserCreate(BaseModel):
     """User creation model."""
 
-    username: str
+    # Constrained so a username is always safe as a single URL path segment.
+    # /api/auth/users/{username} cannot match a name containing "/", and an
+    # empty name cannot be addressed at all -- either produces an account that
+    # is impossible to delete through the API or the UI.
+    #
+    # Only the creation model is constrained, never User: existing accounts are
+    # read back from users.json unchanged, whatever they are named.
+    username: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9._-]+$")
     password: str
     is_admin: bool = False
 
@@ -57,7 +71,8 @@ class Birthday(BaseModel):
 class BirthdayCreate(BaseModel):
     """Birthday creation model."""
 
-    name: str
+    # Constrained on input only, so existing entries still load unchanged.
+    name: BirthdayName
     birth_year: Optional[int] = None
     month: int = Field(ge=1, le=12)
     day: int = Field(ge=1, le=31)
@@ -68,7 +83,7 @@ class BirthdayCreate(BaseModel):
 class BirthdayUpdate(BaseModel):
     """Birthday update model."""
 
-    name: Optional[str] = None
+    name: Optional[BirthdayName] = None
     birth_year: Optional[int] = None
     month: Optional[int] = Field(None, ge=1, le=12)
     day: Optional[int] = Field(None, ge=1, le=31)
