@@ -1,6 +1,8 @@
 """Data storage layer."""
 
 import json
+import os
+import tempfile
 import uuid
 from pathlib import Path
 from typing import List, Optional
@@ -8,6 +10,12 @@ from threading import Lock
 
 from .models import User, Birthday, EmailSettings
 from .config import BIRTHDAYS_FILE, USERS_FILE, SETTINGS_FILE
+
+# These files hold password hashes, the SMTP password and the OpenAI API key,
+# so they are kept readable by the owner only. Set explicitly on every write:
+# an atomic replace installs a brand-new inode, which would otherwise take its
+# permissions from the process umask.
+DATA_FILE_MODE = 0o600
 
 
 class JSONStorage:
@@ -31,10 +39,44 @@ class JSONStorage:
                 return json.load(f)
 
     def _write(self, data: dict):
-        """Write data to JSON file."""
+        """Write data to the JSON file atomically.
+
+        Writing in place would truncate the file before the new contents are
+        written, so a crash mid-write (OOM kill, reboot, container stop) would
+        leave a truncated file and lose every record. Instead the data goes to
+        a temporary file in the same directory, is flushed to disk, and is then
+        moved into place with os.replace() -- an atomic rename on POSIX. A
+        reader therefore sees either the whole old file or the whole new one,
+        never a partial write.
+        """
         with self.lock:
-            with open(self.file_path, "w") as f:
-                json.dump(data, f, indent=2)
+            directory = self.file_path.parent
+            fd, tmp_path = tempfile.mkstemp(
+                dir=directory, prefix=f".{self.file_path.name}.", suffix=".tmp"
+            )
+            try:
+                with os.fdopen(fd, "w") as f:
+                    json.dump(data, f, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+
+                os.chmod(tmp_path, DATA_FILE_MODE)
+                os.replace(tmp_path, self.file_path)
+
+                # Flush the rename itself, so the swap survives a power loss
+                # and not just a process crash.
+                dir_fd = os.open(directory, os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except BaseException:
+                # Never leave a stray temp file behind on failure.
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
 
 
 class UserStorage(JSONStorage):

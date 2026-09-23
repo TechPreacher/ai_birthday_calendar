@@ -12,6 +12,42 @@ const MONTHS = [
     'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
+// Raised by apiFetch when the server rejects our token. Callers check for it
+// so an expired session is not reported as "Failed to save birthday".
+class SessionExpiredError extends Error {}
+
+// Guards against a burst of alerts when several requests 401 at once.
+let sessionExpiredHandled = false;
+
+// The single place an Authorization header is attached and a 401 is acted on.
+// Every authenticated request goes through here. Tokens last 24 hours, so an
+// expiry mid-session is routine rather than exceptional.
+async function apiFetch(url, options = {}) {
+    const response = await fetch(url, {
+        ...options,
+        headers: {
+            ...(options.headers || {}),
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    if (response.status === 401) {
+        handleSessionExpired();
+        throw new SessionExpiredError('Session expired');
+    }
+
+    return response;
+}
+
+function handleSessionExpired() {
+    if (sessionExpiredHandled) {
+        return;
+    }
+    sessionExpiredHandled = true;
+    handleLogout();
+    alert('Your session has expired. Please log in again.');
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     checkAuth();
@@ -76,6 +112,7 @@ async function handleLogin(e) {
             const data = await response.json();
             token = data.access_token;
             localStorage.setItem('token', token);
+            sessionExpiredHandled = false;
             showApp();
             loadBirthdays();
         } else {
@@ -114,19 +151,14 @@ async function showApp() {
 // Birthday functions
 async function loadBirthdays() {
     try {
-        const response = await fetch('/api/birthdays', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        const response = await apiFetch('/api/birthdays');
         
         if (response.ok) {
             birthdays = await response.json();
             renderCalendar();
-        } else if (response.status === 401) {
-            handleLogout();
         }
     } catch (error) {
+        if (error instanceof SessionExpiredError) return;
         console.error('Failed to load birthdays:', error);
     }
 }
@@ -362,19 +394,17 @@ async function handleBirthdaySave(e) {
     try {
         let response;
         if (editingBirthdayId) {
-            response = await fetch(`/api/birthdays/${editingBirthdayId}`, {
+            response = await apiFetch(`/api/birthdays/${encodeURIComponent(editingBirthdayId)}`, {
                 method: 'PUT',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(birthdayData)
             });
         } else {
-            response = await fetch('/api/birthdays', {
+            response = await apiFetch('/api/birthdays', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(birthdayData)
@@ -388,6 +418,7 @@ async function handleBirthdaySave(e) {
             alert('Failed to save birthday');
         }
     } catch (error) {
+        if (error instanceof SessionExpiredError) return;
         console.error('Failed to save birthday:', error);
         alert('Failed to save birthday');
     }
@@ -399,11 +430,8 @@ async function handleBirthdayDelete() {
     }
     
     try {
-        const response = await fetch(`/api/birthdays/${editingBirthdayId}`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
+        const response = await apiFetch(`/api/birthdays/${encodeURIComponent(editingBirthdayId)}`, {
+            method: 'DELETE'
         });
         
         if (response.ok) {
@@ -413,6 +441,7 @@ async function handleBirthdayDelete() {
             alert('Failed to delete birthday');
         }
     } catch (error) {
+        if (error instanceof SessionExpiredError) return;
         console.error('Failed to delete birthday:', error);
         alert('Failed to delete birthday');
     }
@@ -513,11 +542,7 @@ async function openSettingsModal() {
     if (usersTab) usersTab.style.display = 'inline-block';
     
     try {
-        const response = await fetch('/api/settings/email', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        const response = await apiFetch('/api/settings/email');
         
         if (response.ok) {
             const settings = await response.json();
@@ -535,10 +560,10 @@ async function openSettingsModal() {
             document.getElementById('aiEnabled').checked = settings.ai_enabled || false;
             document.getElementById('openaiApiKey').value = settings.openai_api_key || '';
             
-            // Re-attach event listeners
-            document.getElementById('emailEnabled').addEventListener('change', toggleEmailSettings);
-            document.getElementById('aiEnabled').addEventListener('change', toggleAISettings);
-            
+            // No listeners are attached here: this function only populates the
+            // existing form rather than rebuilding it, so the handlers bound in
+            // setupEventListeners() are still live. Re-binding on every open
+            // stacked up a duplicate pair each time the modal was shown.
             toggleEmailSettings();
             toggleAISettings();
             modal.style.display = 'block';
@@ -546,6 +571,7 @@ async function openSettingsModal() {
             alert('You must be an administrator to access settings.');
         }
     } catch (error) {
+        if (error instanceof SessionExpiredError) return;
         console.error('Failed to load settings:', error);
         alert('Failed to load settings');
     }
@@ -581,10 +607,9 @@ async function saveSettings() {
     };
     
     try {
-        const response = await fetch('/api/settings/email', {
+        const response = await apiFetch('/api/settings/email', {
             method: 'PUT',
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(settings)
@@ -597,6 +622,7 @@ async function saveSettings() {
             alert('Failed to save settings');
         }
     } catch (error) {
+        if (error instanceof SessionExpiredError) return;
         console.error('Failed to save settings:', error);
         alert('Failed to save settings');
     }
@@ -604,11 +630,8 @@ async function saveSettings() {
 
 async function testEmail() {
     try {
-        const response = await fetch('/api/settings/email/test', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
+        const response = await apiFetch('/api/settings/email/test', {
+            method: 'POST'
         });
         
         if (response.ok) {
@@ -618,29 +641,28 @@ async function testEmail() {
             alert('Failed to send test email: ' + (error.detail || 'Unknown error'));
         }
     } catch (error) {
+        if (error instanceof SessionExpiredError) return;
         console.error('Failed to test email:', error);
         alert('Failed to test email');
     }
 }
 
-async function testEmailWithAI() {
-    try {
-        // Show loading message
-        const button = event.target;
-        const originalText = button.textContent;
+// `button` is passed in from the onclick handler. It used to be read from the
+// implicit global `window.event`, which is legacy and undefined in some
+// contexts.
+async function testEmailWithAI(button) {
+    const originalText = button ? button.textContent : null;
+
+    if (button) {
         button.textContent = '⏳ Generating AI content...';
         button.disabled = true;
-        
-        const response = await fetch('/api/settings/email/test-ai', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
+    }
+
+    try {
+        const response = await apiFetch('/api/settings/email/test-ai', {
+            method: 'POST'
         });
-        
-        button.textContent = originalText;
-        button.disabled = false;
-        
+
         if (response.ok) {
             const result = await response.json();
             alert(`AI test email sent!\n\nTested with: ${result.birthday_tested}\nDays until birthday: ${result.days_until}\n\nCheck your inbox for the AI-enhanced birthday reminder!`);
@@ -649,8 +671,17 @@ async function testEmailWithAI() {
             alert('Failed to send AI test email:\n' + (error.detail || 'Unknown error'));
         }
     } catch (error) {
+        if (error instanceof SessionExpiredError) return;
         console.error('Failed to test AI email:', error);
         alert('Failed to test AI email: ' + error.message);
+    } finally {
+        // Restore the button whatever happened. An OpenAI call can take a
+        // while, and a failure previously left it disabled with no way back
+        // short of reopening the modal.
+        if (button) {
+            button.textContent = originalText;
+            button.disabled = false;
+        }
     }
 }
 
@@ -718,27 +749,22 @@ function switchTab(tabName) {
 // User management functions
 async function loadCurrentUser() {
     try {
-        const response = await fetch('/api/auth/me', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        const response = await apiFetch('/api/auth/me');
         
         if (response.ok) {
             currentUser = await response.json();
         }
     } catch (error) {
+        // A 401 here already triggered logout; returning quietly avoids
+        // leaving currentUser null and then claiming the user is not an admin.
+        if (error instanceof SessionExpiredError) return;
         console.error('Failed to load current user:', error);
     }
 }
 
 async function loadUsers() {
     try {
-        const response = await fetch('/api/auth/users', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        const response = await apiFetch('/api/auth/users');
         
         if (response.ok) {
             allUsers = await response.json();
@@ -747,6 +773,7 @@ async function loadUsers() {
             document.getElementById('usersList').innerHTML = '<p style="color: #e53e3e;">You must be an administrator to manage users.</p>';
         }
     } catch (error) {
+        if (error instanceof SessionExpiredError) return;
         console.error('Failed to load users:', error);
         alert('Failed to load users');
     }
@@ -831,10 +858,9 @@ async function handleCreateUser(e) {
     };
     
     try {
-        const response = await fetch('/api/auth/users', {
+        const response = await apiFetch('/api/auth/users', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(userData)
@@ -849,6 +875,7 @@ async function handleCreateUser(e) {
             alert('Failed to create user: ' + (error.detail || 'Unknown error'));
         }
     } catch (error) {
+        if (error instanceof SessionExpiredError) return;
         console.error('Failed to create user:', error);
         alert('Failed to create user');
     }
@@ -883,10 +910,9 @@ async function handleChangePassword(e) {
     }
     
     try {
-        const response = await fetch(`/api/auth/users/${username}/password`, {
+        const response = await apiFetch(`/api/auth/users/${encodeURIComponent(username)}/password`, {
             method: 'PUT',
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ password: newPassword })
@@ -906,6 +932,7 @@ async function handleChangePassword(e) {
             alert('Failed to change password: ' + (error.detail || 'Unknown error'));
         }
     } catch (error) {
+        if (error instanceof SessionExpiredError) return;
         console.error('Failed to change password:', error);
         alert('Failed to change password');
     }
@@ -917,11 +944,8 @@ async function deleteUser(username) {
     }
     
     try {
-        const response = await fetch(`/api/auth/users/${username}`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
+        const response = await apiFetch(`/api/auth/users/${encodeURIComponent(username)}`, {
+            method: 'DELETE'
         });
         
         if (response.ok) {
@@ -932,6 +956,7 @@ async function deleteUser(username) {
             alert('Failed to delete user: ' + (error.detail || 'Unknown error'));
         }
     } catch (error) {
+        if (error instanceof SessionExpiredError) return;
         console.error('Failed to delete user:', error);
         alert('Failed to delete user');
     }

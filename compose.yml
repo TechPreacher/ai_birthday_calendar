@@ -1,0 +1,38 @@
+# Birthday Tracker — replaces the old /opt/birthdays + systemd unit.
+# Bound to localhost only; nginx terminates TLS for birthdays.corti.com.
+# See deploy/nginx-birthdays.corti.com.conf.
+
+services:
+  birthdays:
+    build: .
+    image: birthdays:local
+    container_name: birthdays
+    ports:
+      - "127.0.0.1:8081:8081"
+    volumes:
+      # Bind mount, not a named volume: the JSON files stay visible on the
+      # host at ./data so they can be backed up and edited directly.
+      - ./data:/data
+    env_file:
+      - .env
+    environment:
+      BIRTHDAYS_DATA_DIR: /data
+      # APScheduler reads the daily reminder time (09:00) in the container's
+      # local timezone. Without this it would run in UTC and fire at 11:00 CEST.
+      TZ: Europe/Zurich
+    init: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8081/health', timeout=3).status==200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

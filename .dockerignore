@@ -1,0 +1,13 @@
+.git
+.gitignore
+data
+images
+tests
+deploy
+*.md
+LICENSE
+.env
+.env.example
+install.sh
+birthdays.service
+**/*.backup-*
