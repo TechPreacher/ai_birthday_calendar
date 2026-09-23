@@ -28,10 +28,33 @@ app.include_router(auth.router)
 app.include_router(birthdays.router)
 app.include_router(settings.router)
 
+# Served with "no-cache", which means revalidate before use -- not "do not
+# store". Responses already carry an ETag, so an unchanged file costs a 304
+# with no body.
+#
+# Without this there is no Cache-Control header at all, and browsers fall back
+# to heuristic caching. They generally revalidate the HTML document when you
+# navigate but not its subresources, so after a deploy you could get the new
+# index.html together with a stale app.js -- new markup driven by old code,
+# where a button exists but nothing is listening to it.
+REVALIDATE = "no-cache"
+
+
+class RevalidatedStaticFiles(StaticFiles):
+    """StaticFiles that asks browsers to revalidate rather than guess."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = REVALIDATE
+        return response
+
+
 # Static files
 static_path = Path(__file__).parent / "static"
 if static_path.exists():
-    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+    app.mount(
+        "/static", RevalidatedStaticFiles(directory=str(static_path)), name="static"
+    )
 
 
 @app.on_event("startup")
@@ -53,7 +76,10 @@ async def root():
     """Serve the main application."""
     index_path = static_path / "index.html"
     if index_path.exists():
-        return FileResponse(index_path)
+        # Same reasoning as the static mount: the document must never be
+        # served from cache without checking, or it drifts out of step with
+        # the scripts it loads.
+        return FileResponse(index_path, headers={"Cache-Control": REVALIDATE})
     return {"message": "Birthday Tracker API", "docs": "/docs"}
 
 

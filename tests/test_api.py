@@ -766,3 +766,26 @@ class TestSettingsAPI:
         response = client.post("/api/settings/email/test-ai", headers=admin_headers)
         assert response.status_code == 400
         assert "No birthdays" in response.json()["detail"]
+
+
+class TestStaticCaching:
+    """A deploy must not leave browsers running yesterday's JavaScript."""
+
+    def test_index_asks_browsers_to_revalidate(self, client):
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.headers.get("cache-control") == "no-cache"
+
+    def test_static_assets_ask_browsers_to_revalidate(self, client):
+        response = client.get("/static/js/app.js")
+        assert response.status_code == 200
+        assert response.headers.get("cache-control") == "no-cache"
+
+    def test_static_assets_still_carry_an_etag(self, client):
+        """no-cache means revalidate, so an unchanged file must 304."""
+        first = client.get("/static/js/app.js")
+        etag = first.headers.get("etag")
+        assert etag
+
+        second = client.get("/static/js/app.js", headers={"If-None-Match": etag})
+        assert second.status_code == 304
