@@ -130,7 +130,7 @@ async def test_email_with_ai(current_user: User = Depends(get_current_active_use
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    from ..scheduler import send_email, generate_ai_suggestions, calculate_age
+    from ..scheduler import send_email, generate_ai_suggestions, calculate_age, esc
     from ..storage import birthday_storage
     from datetime import datetime
 
@@ -233,22 +233,22 @@ async def test_email_with_ai(current_user: User = Depends(get_current_active_use
         f"<p><strong>Next birthday: {birthday_date.strftime('%B %d, %Y')} ({min_days} days away)</strong></p>",
         "<hr>",
         "<ul>",
-        f"<li><strong>{next_birthday.name}</strong>{age_info}",
+        f"<li><strong>{esc(next_birthday.name)}</strong>{age_info}",
     ]
 
     if next_birthday.note:
-        body_lines.append(f" - <i>{next_birthday.note}</i>")
+        body_lines.append(f" - <i>{esc(next_birthday.note)}</i>")
 
     # Add AI-generated content
     if ai_suggestions.get("message"):
-        body_lines.append(f"<br><br><em>💭 {ai_suggestions['message']}</em>")
+        body_lines.append(f"<br><br><em>💭 {esc(ai_suggestions['message'])}</em>")
 
     if ai_suggestions.get("gifts"):
         body_lines.append(
             "<br><br><strong>🎁 Gift Ideas:</strong><ul style='margin-top: 5px;'>"
         )
         for gift in ai_suggestions["gifts"]:
-            body_lines.append(f"<li>{gift}</li>")
+            body_lines.append(f"<li>{esc(gift)}</li>")
         body_lines.append("</ul>")
 
     body_lines.extend(

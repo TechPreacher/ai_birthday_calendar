@@ -1,5 +1,6 @@
 """Birthday reminder scheduler."""
 
+import html
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -16,6 +17,23 @@ logger = logging.getLogger(__name__)
 
 # Global scheduler instance
 scheduler = None
+
+
+def esc(value) -> str:
+    """Escape a value for interpolation into an HTML email body.
+
+    Reminder emails are assembled as HTML strings, and names, notes and the
+    model's own output all went in raw. The web UI has always escaped these
+    (it builds nodes with textContent), so a note containing "<" rendered
+    correctly on screen and then broke or reshaped the email.
+
+    AI output is escaped for the same reason as user input: it is text from
+    elsewhere being placed into markup, and nothing guarantees it contains no
+    angle brackets.
+    """
+    if value is None:
+        return ""
+    return html.escape(str(value))
 
 
 def calculate_age(birth_year: int, current_year: int) -> int:
@@ -179,10 +197,10 @@ def check_and_send_reminders():
 
             note_info = ""
             if birthday.note:
-                note_info = f" - <i>{birthday.note}</i>"
+                note_info = f" - <i>{esc(birthday.note)}</i>"
 
             body_lines.append(
-                f"<li><strong>{birthday.name}</strong>{age_info}{note_info}"
+                f"<li><strong>{esc(birthday.name)}</strong>{age_info}{note_info}"
             )
 
             # Add AI-generated suggestions if enabled
@@ -195,7 +213,7 @@ def check_and_send_reminders():
                     # Add personalized message
                     if ai_suggestions.get("message"):
                         body_lines.append(
-                            f"<br><br><em>💭 {ai_suggestions['message']}</em>"
+                            f"<br><br><em>💭 {esc(ai_suggestions['message'])}</em>"
                         )
 
                     # Add gift suggestions
@@ -204,7 +222,7 @@ def check_and_send_reminders():
                             "<br><br><strong>🎁 Gift Ideas:</strong><ul style='margin-top: 5px;'>"
                         )
                         for gift in ai_suggestions["gifts"]:
-                            body_lines.append(f"<li>{gift}</li>")
+                            body_lines.append(f"<li>{esc(gift)}</li>")
                         body_lines.append("</ul>")
 
             body_lines.append("</li>")

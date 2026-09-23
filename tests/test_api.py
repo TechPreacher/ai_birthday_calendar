@@ -940,3 +940,37 @@ class TestSettingsSecretsAreMasked:
 
     def test_non_admin_still_refused(self, client, regular_headers):
         assert client.get("/api/settings/email", headers=regular_headers).status_code == 403
+
+
+class TestDocsDisabledByDefault:
+    """The API surface should not be advertised on a public deployment."""
+
+    def test_swagger_ui_is_not_served(self, client):
+        assert client.get("/docs").status_code == 404
+
+    def test_redoc_is_not_served(self, client):
+        assert client.get("/redoc").status_code == 404
+
+    def test_openapi_schema_is_not_served(self, client):
+        """Disabling the UIs alone would leave the schema readable."""
+        assert client.get("/openapi.json").status_code == 404
+
+    def test_the_app_itself_still_works(self, client, admin_headers):
+        assert client.get("/health").status_code == 200
+        assert client.get("/api/birthdays", headers=admin_headers).status_code == 200
+
+    @pytest.mark.parametrize(
+        "value,expected",
+        [("true", True), ("1", True), ("yes", True), ("on", True), ("TRUE", True),
+         ("", False), ("false", False), ("0", False), ("no", False), ("maybe", False)],
+    )
+    def test_the_flag_parses_sensibly(self, monkeypatch, value, expected):
+        monkeypatch.setenv("BIRTHDAYS_ENABLE_DOCS", value)
+        import importlib
+        from app import config
+        importlib.reload(config)
+        try:
+            assert config.ENABLE_DOCS is expected
+        finally:
+            monkeypatch.delenv("BIRTHDAYS_ENABLE_DOCS", raising=False)
+            importlib.reload(config)
