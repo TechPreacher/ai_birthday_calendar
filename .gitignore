@@ -32,3 +32,6 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated scaffolding for applying config to this host
+deploy/*.live-*
