@@ -146,6 +146,13 @@ async function handleLogin(e) {
             sessionExpiredHandled = false;
             showApp();
             loadBirthdays();
+        } else if (response.status === 403) {
+            // The password was right but the account is disabled. Saying so
+            // beats "invalid username or password", which would send someone
+            // hunting for a typo that is not there.
+            const body = await response.json().catch(() => null);
+            document.getElementById('loginError').textContent =
+                errorText(body, 'This account has been disabled.');
         } else {
             document.getElementById('loginError').textContent = 'Invalid username or password';
         }

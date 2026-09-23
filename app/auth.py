@@ -89,7 +89,15 @@ async def get_current_active_user(
 ) -> User:
     """Get the current active (non-disabled) user."""
     if current_user.disabled:
-        raise HTTPException(status_code=400, detail="Inactive user")
+        # 401, not 400. A token issued before the account was disabled is no
+        # longer usable, which is an authentication failure -- and the client
+        # only clears its stored token and returns to the login screen on a
+        # 401. A 400 left it looping on a session that could never succeed.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This account has been disabled",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return current_user
 
 

@@ -789,3 +789,67 @@ class TestStaticCaching:
 
         second = client.get("/static/js/app.js", headers={"If-None-Match": etag})
         assert second.status_code == 304
+
+
+class TestDisabledAccounts:
+    """A disabled account used to log in fine and then fail every request."""
+
+    def _disable(self, user_storage, username):
+        user = user_storage.get_by_username(username)
+        user.disabled = True
+        user_storage.update(username, user)
+
+    def test_disabled_user_cannot_log_in(self, client, user_storage, regular_user):
+        self._disable(user_storage, "regular")
+
+        response = client.post(
+            "/api/auth/token",
+            data={"username": "regular", "password": "userpass123"},
+        )
+        assert response.status_code == 403
+        assert "disabled" in response.json()["detail"].lower()
+
+    def test_disabled_user_gets_no_token(self, client, user_storage, regular_user):
+        """The real bug: a valid token was issued, then nothing worked."""
+        self._disable(user_storage, "regular")
+
+        response = client.post(
+            "/api/auth/token",
+            data={"username": "regular", "password": "userpass123"},
+        )
+        assert "access_token" not in response.json()
+
+    def test_wrong_password_on_a_disabled_account_stays_generic(
+        self, client, user_storage, regular_user
+    ):
+        """Disabled status must not leak to someone without the password."""
+        self._disable(user_storage, "regular")
+
+        response = client.post(
+            "/api/auth/token",
+            data={"username": "regular", "password": "not-the-password"},
+        )
+        assert response.status_code == 401
+        assert "disabled" not in response.json()["detail"].lower()
+
+    def test_existing_token_stops_working_when_disabled(
+        self, client, user_storage, regular_headers
+    ):
+        """A session already in progress must end, as a 401 so the client
+        clears its token rather than looping on an unusable session."""
+        assert client.get("/api/auth/me", headers=regular_headers).status_code == 200
+
+        self._disable(user_storage, "regular")
+
+        response = client.get("/api/auth/me", headers=regular_headers)
+        assert response.status_code == 401
+        assert response.headers.get("www-authenticate") == "Bearer"
+
+    def test_disabled_user_cannot_reach_data_endpoints(
+        self, client, user_storage, regular_headers
+    ):
+        self._disable(user_storage, "regular")
+        assert client.get("/api/birthdays", headers=regular_headers).status_code == 401
+
+    def test_active_users_are_unaffected(self, client, regular_headers):
+        assert client.get("/api/auth/me", headers=regular_headers).status_code == 200
