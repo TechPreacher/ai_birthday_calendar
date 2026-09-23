@@ -33,6 +33,10 @@ dev = [
 # accumulating them again until an upgrade breaks.
 filterwarnings = [
     "error::pydantic.PydanticDeprecatedSince20",
+    # datetime.utcnow() returns a naive value that merely holds UTC.
+    'error:datetime\.datetime\.utcnow\(\) is deprecated:DeprecationWarning',
+    # FastAPI's startup/shutdown hooks, superseded by the lifespan handler.
+    'error:on_event is deprecated:DeprecationWarning',
 ]
 
 [build-system]
