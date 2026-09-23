@@ -22,3 +22,14 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 # Default admin credentials (change in production!)
 DEFAULT_ADMIN_USERNAME = os.getenv("BIRTHDAYS_ADMIN_USERNAME", "admin")
 DEFAULT_ADMIN_PASSWORD = os.getenv("BIRTHDAYS_ADMIN_PASSWORD", "changeme")
+
+# Swagger UI, ReDoc and the OpenAPI schema. Off by default: the endpoints they
+# describe all require a token, but on a public deployment they advertise the
+# entire API surface to anyone who asks, for no benefit to the people actually
+# using the app. Set BIRTHDAYS_ENABLE_DOCS=true when working against the API.
+ENABLE_DOCS = os.getenv("BIRTHDAYS_ENABLE_DOCS", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)

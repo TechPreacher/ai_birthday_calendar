@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
 
+from .config import ENABLE_DOCS
 from .routes import auth, birthdays, settings
 from .auth import ensure_default_admin
 from .storage import migrate_birthdays_add_ids
@@ -16,11 +17,16 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
-# Create app
+# Create app. The interactive docs and the OpenAPI schema they are built from
+# are disabled unless BIRTHDAYS_ENABLE_DOCS is set; openapi_url has to go too,
+# or the schema stays readable even with the UIs switched off.
 app = FastAPI(
     title="Birthday Tracker",
     description="A simple birthday tracker with email reminders",
     version="1.0.0",
+    docs_url="/docs" if ENABLE_DOCS else None,
+    redoc_url="/redoc" if ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if ENABLE_DOCS else None,
 )
 
 # Include routers
@@ -80,7 +86,7 @@ async def root():
         # served from cache without checking, or it drifts out of step with
         # the scripts it loads.
         return FileResponse(index_path, headers={"Cache-Control": REVALIDATE})
-    return {"message": "Birthday Tracker API", "docs": "/docs"}
+    return {"message": "Birthday Tracker API"}
 
 
 @app.get("/health")

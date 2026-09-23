@@ -301,7 +301,19 @@ chmod 600 birthdays-data-*.tar.gz   # the archive contains the same secrets
 
 ## API Documentation
 
-Interactive API documentation is available at `/docs` (Swagger UI) when the app is running.
+Interactive API documentation (Swagger UI at `/docs`, ReDoc at `/redoc`, and the
+schema at `/openapi.json`) is **disabled by default**. The endpoints it describes
+all require a token, but on a public deployment it advertises the whole API
+surface to anyone who asks, and the people using the app never need it.
+
+Enable it when working against the API:
+
+```bash
+BIRTHDAYS_ENABLE_DOCS=true
+```
+
+Under Docker, add it to the `environment:` block in `compose.yml` and re-create
+the container.
 
 ## Project Structure
 
@@ -401,11 +413,15 @@ docker compose up -d --build
   chmod 600 .env data/*.json
   ```
 
-- `/docs` and `/openapi.json` are served without authentication. The endpoints
-  behind them require a token, but pass `docs_url=None, redoc_url=None` to
-  `FastAPI()` in `app/main.py` if you would rather not advertise the API surface
-- There is no rate limiting on `/api/auth/token`. If the app is exposed to the
-  internet, add a `limit_req` zone for that endpoint in your reverse proxy
+- `/docs`, `/redoc` and `/openapi.json` are disabled unless
+  `BIRTHDAYS_ENABLE_DOCS` is set, so the API surface is not advertised publicly
+- Reminder emails escape names, notes and AI-generated text before placing them
+  in the HTML body, so a note containing `<` renders as written rather than
+  reshaping the message
+- The nginx template in `deploy/` rate-limits `/api/auth/token` to slow down
+  password guessing. If you front the app some other way, add an equivalent —
+  bcrypt makes each attempt expensive, but nothing otherwise caps how many can
+  be made
 
 ## License
 

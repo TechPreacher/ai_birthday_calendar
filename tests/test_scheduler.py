@@ -473,3 +473,95 @@ class TestSchedulerConfig:
             mock_instance.start.assert_called_once()
 
         sched.scheduler = None
+
+
+class TestEmailHtmlEscaping:
+    """Names, notes and model output go into an HTML body and must be escaped."""
+
+    def _send_and_capture(self, birthday_storage, settings_storage, birthday):
+        birthday_storage.create(birthday)
+        settings_storage.save_email_settings(
+            EmailSettings(
+                enabled=True,
+                recipients=["a@example.com"],
+                smtp_server="smtp.example.com",
+                from_email="from@example.com",
+            )
+        )
+        with patch("app.scheduler.datetime") as mock_datetime:
+            mock_datetime.now.return_value = datetime(2026, 6, 14, 9, 0)
+            with patch("app.scheduler.send_email") as mock_send:
+                check_and_send_reminders()
+                assert mock_send.called, "no email was sent"
+                return mock_send.call_args[0][1]
+
+    def test_a_name_containing_markup_is_escaped(
+        self, birthday_storage, settings_storage
+    ):
+        body = self._send_and_capture(
+            birthday_storage,
+            settings_storage,
+            Birthday(id="x", name="<script>alert(1)</script>", month=6, day=15),
+        )
+        assert "<script>" not in body
+        assert "&lt;script&gt;" in body
+
+    def test_a_note_containing_markup_is_escaped(
+        self, birthday_storage, settings_storage
+    ):
+        body = self._send_and_capture(
+            birthday_storage,
+            settings_storage,
+            Birthday(id="x", name="Alice", month=6, day=15, note="<b>loves</b> & co"),
+        )
+        assert "<b>loves</b>" not in body
+        assert "&lt;b&gt;loves&lt;/b&gt;" in body
+        assert "&amp; co" in body
+
+    def test_an_ampersand_in_a_name_survives_readably(
+        self, birthday_storage, settings_storage
+    ):
+        """Escaping must not mangle ordinary text."""
+        body = self._send_and_capture(
+            birthday_storage,
+            settings_storage,
+            Birthday(id="x", name="Ben & Jerry", month=6, day=15),
+        )
+        assert "Ben &amp; Jerry" in body
+
+    def test_ai_output_is_escaped_too(self, birthday_storage, settings_storage):
+        """Model output is text from elsewhere being placed into markup."""
+        birthday_storage.create(Birthday(id="x", name="Alice", month=6, day=15))
+        settings_storage.save_email_settings(
+            EmailSettings(
+                enabled=True,
+                recipients=["a@example.com"],
+                smtp_server="smtp.example.com",
+                from_email="from@example.com",
+                ai_enabled=True,
+                openai_api_key="not-a-real-key",
+            )
+        )
+        fake = {"message": "<img src=x onerror=alert(1)>", "gifts": ["<i>a gift</i>"]}
+        with patch("app.scheduler.datetime") as mock_datetime:
+            mock_datetime.now.return_value = datetime(2026, 6, 14, 9, 0)
+            with patch("app.scheduler.generate_ai_suggestions", return_value=fake):
+                with patch("app.scheduler.send_email") as mock_send:
+                    check_and_send_reminders()
+                    body = mock_send.call_args[0][1]
+
+        assert "<img" not in body
+        assert "&lt;img" in body
+        assert "<i>a gift</i>" not in body
+        assert "&lt;i&gt;a gift&lt;/i&gt;" in body
+
+    def test_the_email_structure_itself_is_not_escaped(
+        self, birthday_storage, settings_storage
+    ):
+        """Only the interpolated values -- the surrounding markup must survive."""
+        body = self._send_and_capture(
+            birthday_storage,
+            settings_storage,
+            Birthday(id="x", name="Alice", month=6, day=15),
+        )
+        assert "<html>" in body and "<li>" in body and "<strong>" in body
