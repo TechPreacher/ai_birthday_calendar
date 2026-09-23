@@ -2,6 +2,8 @@
 
 import pytest
 
+from app.models import SECRET_PLACEHOLDER
+
 
 class TestHealthAndRoot:
     def test_health_check(self, client):
@@ -853,3 +855,88 @@ class TestDisabledAccounts:
 
     def test_active_users_are_unaffected(self, client, regular_headers):
         assert client.get("/api/auth/me", headers=regular_headers).status_code == 200
+
+
+class TestSettingsSecretsAreMasked:
+    """The SMTP password and OpenAI key must never reach the browser."""
+
+    FAKE_SMTP = "not-a-real-smtp-password"
+    FAKE_KEY = "not-a-real-openai-key-0123456789"
+
+    def _store(self, client, admin_headers, **overrides):
+        payload = {
+            "enabled": True,
+            "smtp_server": "smtp.example.com",
+            "smtp_username": "user@example.com",
+            "smtp_password": self.FAKE_SMTP,
+            "from_email": "from@example.com",
+            "recipients": ["a@example.com"],
+            "ai_enabled": True,
+            "openai_api_key": self.FAKE_KEY,
+        }
+        payload.update(overrides)
+        return client.put("/api/settings/email", json=payload, headers=admin_headers)
+
+    def test_get_never_returns_the_real_secrets(self, client, admin_headers):
+        self._store(client, admin_headers)
+
+        body = client.get("/api/settings/email", headers=admin_headers).json()
+
+        assert self.FAKE_SMTP not in str(body)
+        assert self.FAKE_KEY not in str(body)
+        assert body["smtp_password"] == SECRET_PLACEHOLDER
+        assert body["openai_api_key"] == SECRET_PLACEHOLDER
+
+    def test_put_response_is_masked_too(self, client, admin_headers):
+        body = self._store(client, admin_headers).json()
+        assert self.FAKE_SMTP not in str(body)
+        assert self.FAKE_KEY not in str(body)
+
+    def test_the_real_secrets_are_still_stored(self, client, admin_headers, settings_storage):
+        """Masking is presentation only -- the scheduler still needs them."""
+        self._store(client, admin_headers)
+
+        stored = settings_storage.get_email_settings()
+        assert stored.smtp_password == self.FAKE_SMTP
+        assert stored.openai_api_key == self.FAKE_KEY
+
+    def test_saving_the_form_untouched_keeps_the_secrets(
+        self, client, admin_headers, settings_storage
+    ):
+        """The round trip that would otherwise destroy them."""
+        self._store(client, admin_headers)
+
+        returned = client.get("/api/settings/email", headers=admin_headers).json()
+        client.put("/api/settings/email", json=returned, headers=admin_headers)
+
+        stored = settings_storage.get_email_settings()
+        assert stored.smtp_password == self.FAKE_SMTP
+        assert stored.openai_api_key == self.FAKE_KEY
+
+    def test_a_new_value_replaces_the_secret(
+        self, client, admin_headers, settings_storage
+    ):
+        self._store(client, admin_headers)
+        self._store(client, admin_headers, smtp_password="a-different-password")
+
+        assert settings_storage.get_email_settings().smtp_password == "a-different-password"
+
+    def test_an_empty_value_clears_the_secret(
+        self, client, admin_headers, settings_storage
+    ):
+        """Clearing must still be possible, and distinguishable from unchanged."""
+        self._store(client, admin_headers)
+        self._store(client, admin_headers, smtp_password="")
+
+        assert settings_storage.get_email_settings().smtp_password == ""
+
+    def test_an_unset_secret_reads_back_empty_not_masked(self, client, admin_headers):
+        """So the screen can show whether a secret is configured at all."""
+        self._store(client, admin_headers, smtp_password="", openai_api_key="")
+
+        body = client.get("/api/settings/email", headers=admin_headers).json()
+        assert body["smtp_password"] == ""
+        assert body["openai_api_key"] == ""
+
+    def test_non_admin_still_refused(self, client, regular_headers):
+        assert client.get("/api/settings/email", headers=regular_headers).status_code == 403
