@@ -2,7 +2,12 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..models import EmailSettings, User
+from ..models import (
+    SECRET_PLACEHOLDER,
+    SECRET_SETTING_FIELDS,
+    EmailSettings,
+    User,
+)
 from ..auth import get_current_active_user
 from ..storage import settings_storage
 from ..scheduler import reschedule_reminders
@@ -10,12 +15,48 @@ from ..scheduler import reschedule_reminders
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
+def _without_secrets(settings: EmailSettings) -> EmailSettings:
+    """Replace stored secrets with a placeholder for sending to a client.
+
+    A secret that is not set stays empty, so the settings screen can still
+    show at a glance whether one is configured.
+    """
+    data = settings.model_dump()
+    for field in SECRET_SETTING_FIELDS:
+        if data.get(field):
+            data[field] = SECRET_PLACEHOLDER
+    return EmailSettings(**data)
+
+
+def _restore_unchanged_secrets(
+    incoming: EmailSettings, stored: EmailSettings
+) -> EmailSettings:
+    """Put back any secret the client echoed unchanged.
+
+    The client is sent a placeholder rather than the real value, so saving the
+    form untouched would otherwise overwrite the SMTP password and the OpenAI
+    key with that placeholder. Any other value is taken at face value, so an
+    empty string still clears a secret deliberately.
+    """
+    data = incoming.model_dump()
+    for field in SECRET_SETTING_FIELDS:
+        if data.get(field) == SECRET_PLACEHOLDER:
+            data[field] = getattr(stored, field)
+    return EmailSettings(**data)
+
+
 @router.get("/email", response_model=EmailSettings)
 async def get_email_settings(current_user: User = Depends(get_current_active_user)):
-    """Get email notification settings."""
+    """Get email notification settings.
+
+    Secrets are masked. They were previously returned in the clear, which put
+    the SMTP password and the OpenAI API key into the browser of every admin
+    who opened the settings screen -- and into anything that could read from
+    there.
+    """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    return settings_storage.get_email_settings()
+    return _without_secrets(settings_storage.get_email_settings())
 
 
 @router.put("/email", response_model=EmailSettings)
@@ -26,12 +67,16 @@ async def update_email_settings(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    settings_storage.save_email_settings(settings)
+    stored = settings_storage.get_email_settings()
+    to_save = _restore_unchanged_secrets(settings, stored)
+    settings_storage.save_email_settings(to_save)
 
     # Reschedule reminders with new time
     reschedule_reminders()
 
-    return settings
+    # Masked on the way out too, so the response cannot leak what the request
+    # deliberately withheld.
+    return _without_secrets(to_save)
 
 
 @router.post("/email/test")

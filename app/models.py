@@ -166,6 +166,18 @@ class BirthdayUpdate(BaseModel):
         return self
 
 
+# Sent in place of a stored secret so the browser never receives the SMTP
+# password or the OpenAI key. Saving it back unchanged means "keep what is
+# stored"; any other value replaces the secret, and an empty string clears it.
+#
+# Deliberately not a run of asterisks or bullets, which someone could
+# plausibly have chosen as an actual password.
+SECRET_PLACEHOLDER = "__stored_secret_unchanged__"
+
+# Fields never returned to a client in the clear.
+SECRET_SETTING_FIELDS = ("smtp_password", "openai_api_key")
+
+
 class EmailSettings(BaseModel):
     """Email notification settings."""
 
