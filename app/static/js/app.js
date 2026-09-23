@@ -146,6 +146,13 @@ async function handleLogin(e) {
             sessionExpiredHandled = false;
             showApp();
             loadBirthdays();
+        } else if (response.status === 403) {
+            // The password was right but the account is disabled. Saying so
+            // beats "invalid username or password", which would send someone
+            // hunting for a typo that is not there.
+            const body = await response.json().catch(() => null);
+            document.getElementById('loginError').textContent =
+                errorText(body, 'This account has been disabled.');
         } else {
             document.getElementById('loginError').textContent = 'Invalid username or password';
         }
@@ -944,10 +951,22 @@ function openChangePasswordModal(username) {
 
 // Entry point for the header button: every user can change their own password,
 // including those with no access to the settings screen at all.
-function openMyPasswordModal() {
+async function openMyPasswordModal() {
+    // currentUser is normally populated during showApp(). If that request
+    // failed, retry it here rather than returning silently -- a button that
+    // does nothing, with nothing in the console, is the worst outcome.
     if (!currentUser) {
+        await loadCurrentUser();
+    }
+
+    if (!currentUser) {
+        alert(
+            'Could not determine which account you are signed in as. ' +
+            'Please reload the page and try again.'
+        );
         return;
     }
+
     openChangePasswordModal(currentUser.username);
 }
 

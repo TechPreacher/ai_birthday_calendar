@@ -27,6 +27,19 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # A disabled account used to receive a perfectly valid token here, and
+    # only then hit "Inactive user" on every request it made -- a half-working
+    # session rather than a refusal. Rejected at the door instead.
+    #
+    # This is checked only after the password has been verified, so it cannot
+    # be used to discover which accounts exist or which are disabled. Saying
+    # so plainly is then more useful than a misleading "wrong password".
+    if user.disabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been disabled. Contact an administrator.",
+        )
+
     access_token = create_access_token(data={"sub": user.username})
     return Token(access_token=access_token, token_type="bearer")
 
