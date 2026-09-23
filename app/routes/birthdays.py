@@ -5,6 +5,7 @@ from typing import List
 
 from ..models import Birthday, BirthdayCreate, BirthdayUpdate, User
 from ..auth import get_current_active_user
+from ..dates import month_day_error
 from ..storage import birthday_storage
 
 router = APIRouter(prefix="/api/birthdays", tags=["birthdays"])
@@ -50,6 +51,13 @@ async def update_birthday(
     # Update only provided fields
     update_dict = birthday_data.dict(exclude_unset=True)
     updated_birthday = existing.copy(update=update_dict)
+
+    # copy(update=...) does not re-run validation, so a partial update that
+    # changes only the day could still land on an impossible date -- setting
+    # day=31 on an entry already in February, say. Check the merged pair.
+    date_error = month_day_error(updated_birthday.month, updated_birthday.day)
+    if date_error:
+        raise HTTPException(status_code=422, detail=date_error)
 
     result = birthday_storage.update(birthday_id, updated_birthday)
     if not result:

@@ -715,6 +715,20 @@ async function testEmailWithAI(button) {
     }
 }
 
+function isLeapYear(year) {
+    return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+// Where a birthday falls in a given year. Only February 29 moves: `new Date`
+// would roll it forward to March 1 in a non-leap year, which disagrees with
+// the server, where a leap-day birthday is observed on February 28.
+function occurrenceInYear(month, day, year) {
+    if (month === 2 && day === 29 && !isLeapYear(year)) {
+        return new Date(year, 1, 28);
+    }
+    return new Date(year, month - 1, day);
+}
+
 function findNextBirthday() {
     if (birthdays.length === 0) return null;
     
@@ -731,8 +745,8 @@ function findNextBirthday() {
         if (!birthday.day) return;
         
         // Calculate this year's occurrence
-        let birthdayThisYear = new Date(currentYear, birthday.month - 1, birthday.day);
-        let birthdayNextYear = new Date(currentYear + 1, birthday.month - 1, birthday.day);
+        let birthdayThisYear = occurrenceInYear(birthday.month, birthday.day, currentYear);
+        let birthdayNextYear = occurrenceInYear(birthday.month, birthday.day, currentYear + 1);
         
         // Calculate days until birthday
         let daysUntil;

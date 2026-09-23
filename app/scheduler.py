@@ -9,6 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 import logging
 import re
 
+from .dates import falls_on
 from .storage import birthday_storage, settings_storage
 
 logger = logging.getLogger(__name__)
@@ -146,12 +147,13 @@ def check_and_send_reminders():
         tomorrow_day = tomorrow.day
         current_year = tomorrow.year
 
-        # Find birthdays tomorrow (skip entries with null day)
+        # Find birthdays tomorrow. falls_on() skips entries with no day and
+        # handles February 29: comparing month and day directly missed
+        # leap-day birthdays entirely in a non-leap year -- no email, no error,
+        # nothing in the log to notice.
         all_birthdays = birthday_storage.get_all()
         upcoming_birthdays = [
-            b
-            for b in all_birthdays
-            if b.day is not None and b.month == tomorrow_month and b.day == tomorrow_day
+            b for b in all_birthdays if falls_on(b.month, b.day, tomorrow.date())
         ]
 
         if not upcoming_birthdays:

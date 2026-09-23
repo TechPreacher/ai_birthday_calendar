@@ -89,6 +89,8 @@ async def test_email_with_ai(current_user: User = Depends(get_current_active_use
     from ..storage import birthday_storage
     from datetime import datetime
 
+    from ..dates import next_occurrence
+
     # Get settings
     settings = settings_storage.get_email_settings()
 
@@ -116,22 +118,20 @@ async def test_email_with_ai(current_user: User = Depends(get_current_active_use
 
     # Find next birthday
     next_birthday = None
+    next_birthday_date = None
     min_days = float("inf")
 
     for birthday in valid_birthdays:
-        # Calculate this year's and next year's occurrence
-        this_year = datetime(today.year, birthday.month, birthday.day)
-        next_year = datetime(today.year + 1, birthday.month, birthday.day)
-
-        # Use whichever is in the future and closest
-        if this_year >= today:
-            days_until = (this_year - today).days
-        else:
-            days_until = (next_year - today).days
+        # next_occurrence handles February 29, which has no date at all in a
+        # non-leap year -- datetime(2026, 2, 29) raises, which surfaced here as
+        # a 500 from this endpoint.
+        occurrence = next_occurrence(birthday.month, birthday.day, today.date())
+        days_until = (occurrence - today.date()).days
 
         if days_until < min_days:
             min_days = days_until
             next_birthday = birthday
+            next_birthday_date = occurrence
 
     if not next_birthday:
         raise HTTPException(
@@ -142,13 +142,9 @@ async def test_email_with_ai(current_user: User = Depends(get_current_active_use
     age_info = ""
     age_value = None
     if next_birthday.birth_year:
-        # Use the year the birthday will occur
-        birthday_year = (
-            today.year
-            if datetime(today.year, next_birthday.month, next_birthday.day) >= today
-            else today.year + 1
-        )
-        age_value = calculate_age(next_birthday.birth_year, birthday_year)
+        # The year the birthday will occur, taken from the occurrence already
+        # computed above rather than rebuilt from a possibly impossible date.
+        age_value = calculate_age(next_birthday.birth_year, next_birthday_date.year)
         age_info = f" (turning {age_value})"
 
     # Generate AI suggestions
@@ -181,13 +177,7 @@ async def test_email_with_ai(current_user: User = Depends(get_current_active_use
         )
 
     # Build test email
-    birthday_date = datetime(
-        today.year
-        if datetime(today.year, next_birthday.month, next_birthday.day) >= today
-        else today.year + 1,
-        next_birthday.month,
-        next_birthday.day,
-    )
+    birthday_date = next_birthday_date
 
     subject = "🎂 Birthday Tracker - AI Test (Next Upcoming Birthday)"
 

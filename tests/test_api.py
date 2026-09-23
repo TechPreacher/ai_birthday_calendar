@@ -295,6 +295,60 @@ class TestBirthdayAPI:
         assert data["id"] is not None
         assert data["contact_type"] == "Friend"
 
+    @pytest.mark.parametrize(
+        "month,day", [(2, 30), (2, 31), (4, 31), (6, 31), (9, 31), (11, 31)]
+    )
+    def test_create_birthday_rejects_impossible_date(
+        self, client, admin_headers, month, day
+    ):
+        """month and day used to be validated independently, so Feb 31 passed.
+
+        Such an entry can never match a real day, so it would never produce a
+        reminder.
+        """
+        response = client.post(
+            "/api/birthdays",
+            json={"name": "Nobody", "month": month, "day": day},
+            headers=admin_headers,
+        )
+        assert response.status_code == 422
+        assert client.get("/api/birthdays", headers=admin_headers).json() == []
+
+    def test_create_birthday_accepts_feb_29(self, client, admin_headers):
+        """Leap-day birthdays are real and must be storable."""
+        response = client.post(
+            "/api/birthdays",
+            json={"name": "Leapling", "month": 2, "day": 29},
+            headers=admin_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["day"] == 29
+
+    def test_partial_update_cannot_create_an_impossible_date(
+        self, client, admin_headers
+    ):
+        """copy(update=...) skips validation, so the merged pair is checked.
+
+        Changing only the day of a February entry to 31 must not slip through.
+        """
+        created = client.post(
+            "/api/birthdays",
+            json={"name": "Alice", "month": 2, "day": 10},
+            headers=admin_headers,
+        ).json()
+
+        response = client.put(
+            f"/api/birthdays/{created['id']}",
+            json={"day": 31},
+            headers=admin_headers,
+        )
+        assert response.status_code == 422
+
+        unchanged = client.get(
+            f"/api/birthdays/{created['id']}", headers=admin_headers
+        ).json()
+        assert unchanged["day"] == 10
+
     @pytest.mark.parametrize("name", ["", "   "])
     def test_create_birthday_rejects_blank_name(self, client, admin_headers, name):
         """A blank name renders as an empty, unclickable row in the calendar."""

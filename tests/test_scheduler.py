@@ -110,6 +110,85 @@ class TestGenerateAISuggestions:
         assert result is not None
 
 
+class TestLeapDayReminders:
+    """February 29 birthdays must be reminded in every year, not one in four."""
+
+    def _run_on(self, when):
+        """Run the reminder check as if 'now' were `when`."""
+        with patch("app.scheduler.datetime") as mock_datetime:
+            mock_datetime.now.return_value = when
+            with patch("app.scheduler.send_email") as mock_send:
+                check_and_send_reminders()
+                return mock_send
+
+    def _enable_email(self, settings_storage):
+        settings_storage.save_email_settings(
+            EmailSettings(
+                enabled=True,
+                recipients=["a@example.com"],
+                smtp_server="smtp.example.com",
+                from_email="from@example.com",
+            )
+        )
+
+    def test_reminded_in_a_non_leap_year(self, birthday_storage, settings_storage):
+        """The bug: no email, no error, nothing in the log to notice.
+
+        2026 is not a leap year, so February 29 never arrives and matching on
+        month/day found nothing. The birthday is observed on February 28, so
+        the reminder goes out on the 27th.
+        """
+        birthday_storage.create(
+            Birthday(id="leap", name="Leapling", month=2, day=29, birth_year=2000)
+        )
+        self._enable_email(settings_storage)
+
+        mock_send = self._run_on(datetime(2026, 2, 27, 9, 0))
+
+        mock_send.assert_called_once()
+        assert "Leapling" in mock_send.call_args[0][1]
+
+    def test_reminded_on_the_real_date_in_a_leap_year(
+        self, birthday_storage, settings_storage
+    ):
+        birthday_storage.create(Birthday(id="leap", name="Leapling", month=2, day=29))
+        self._enable_email(settings_storage)
+
+        mock_send = self._run_on(datetime(2028, 2, 28, 9, 0))
+
+        mock_send.assert_called_once()
+        assert "Leapling" in mock_send.call_args[0][1]
+
+    def test_does_not_fire_twice_in_a_leap_year(
+        self, birthday_storage, settings_storage
+    ):
+        """February 29 exists in 2028, so the 27th must stay quiet."""
+        birthday_storage.create(Birthday(id="leap", name="Leapling", month=2, day=29))
+        self._enable_email(settings_storage)
+
+        self._run_on(datetime(2028, 2, 27, 9, 0)).assert_not_called()
+
+    def test_ordinary_feb_28_birthday_is_undisturbed(
+        self, birthday_storage, settings_storage
+    ):
+        birthday_storage.create(Birthday(id="feb28", name="Normal", month=2, day=28))
+        self._enable_email(settings_storage)
+
+        mock_send = self._run_on(datetime(2026, 2, 27, 9, 0))
+
+        mock_send.assert_called_once()
+        assert "Normal" in mock_send.call_args[0][1]
+
+    def test_no_year_is_skipped(self, birthday_storage, settings_storage):
+        """Four consecutive years, each getting exactly one reminder."""
+        birthday_storage.create(Birthday(id="leap", name="Leapling", month=2, day=29))
+        self._enable_email(settings_storage)
+
+        for year, reminder_day in {2025: 27, 2026: 27, 2027: 27, 2028: 28}.items():
+            mock_send = self._run_on(datetime(year, 2, reminder_day, 9, 0))
+            assert mock_send.call_count == 1, f"no reminder sent in {year}"
+
+
 class TestCheckAndSendReminders:
     def _setup_birthday_tomorrow(self, birthday_storage, settings_storage, **kwargs):
         """Helper to set up a birthday for tomorrow and enable email."""

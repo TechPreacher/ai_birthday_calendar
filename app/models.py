@@ -1,7 +1,15 @@
 """Data models."""
 
 from typing import Annotated, Optional
-from pydantic import AfterValidator, BaseModel, Field, StringConstraints
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    StringConstraints,
+    model_validator,
+)
+
+from .dates import month_day_error
 
 # A person's name, as accepted from a client. Whitespace is stripped first, so
 # a name of only spaces is rejected rather than stored -- it would otherwise
@@ -120,6 +128,16 @@ class BirthdayCreate(BaseModel):
     note: Optional[str] = None
     contact_type: str = "Friend"  # "Friend" or "Business"
 
+    @model_validator(mode="after")
+    def _month_and_day_form_a_real_date(self):
+        # ge/le check the two fields separately, which lets February 31 and
+        # April 31 through. Such an entry can never match a real day, so it
+        # would never produce a reminder.
+        error = month_day_error(self.month, self.day)
+        if error:
+            raise ValueError(error)
+        return self
+
 
 class BirthdayUpdate(BaseModel):
     """Birthday update model."""
@@ -130,6 +148,16 @@ class BirthdayUpdate(BaseModel):
     day: Optional[int] = Field(None, ge=1, le=31)
     note: Optional[str] = None
     contact_type: Optional[str] = None  # "Friend" or "Business"
+
+    @model_validator(mode="after")
+    def _month_and_day_form_a_real_date(self):
+        # Only checks what this request supplies. A partial update that changes
+        # just one of the pair is validated against the merged result in the
+        # route, since copy(update=...) does not re-run validation.
+        error = month_day_error(self.month, self.day)
+        if error:
+            raise ValueError(error)
+        return self
 
 
 class EmailSettings(BaseModel):
