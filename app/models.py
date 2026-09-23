@@ -1,13 +1,43 @@
 """Data models."""
 
 from typing import Annotated, Optional
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
 # A person's name, as accepted from a client. Whitespace is stripped first, so
 # a name of only spaces is rejected rather than stored -- it would otherwise
 # render as an empty, unclickable row in the calendar.
 BirthdayName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+]
+
+# bcrypt hashes at most 72 bytes of a password and ignores the rest. bcrypt 5.x
+# raises rather than truncating, which surfaced as a 500 from the API; 4.x
+# truncated silently, which is worse -- two different passwords sharing their
+# first 72 bytes verify against the same hash. So the limit is enforced here,
+# before anything reaches the hashing call.
+#
+# The limit is in BYTES, not characters: an accented letter is two bytes in
+# UTF-8 and an emoji is four, so a password well under 72 characters can still
+# exceed it.
+BCRYPT_MAX_PASSWORD_BYTES = 72
+MIN_PASSWORD_LENGTH = 6
+
+
+def _check_password_bytes(value: str) -> str:
+    encoded_length = len(value.encode("utf-8"))
+    if encoded_length > BCRYPT_MAX_PASSWORD_BYTES:
+        raise ValueError(
+            f"Password is too long: {encoded_length} bytes, maximum is "
+            f"{BCRYPT_MAX_PASSWORD_BYTES}. That is about 72 ordinary "
+            "characters; accented letters count as two and emoji as four."
+        )
+    return value
+
+
+Password = Annotated[
+    str,
+    StringConstraints(min_length=MIN_PASSWORD_LENGTH),
+    AfterValidator(_check_password_bytes),
 ]
 
 
@@ -44,8 +74,19 @@ class UserCreate(BaseModel):
     # Only the creation model is constrained, never User: existing accounts are
     # read back from users.json unchanged, whatever they are named.
     username: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9._-]+$")
-    password: str
+    password: Password
     is_admin: bool = False
+
+
+class PasswordChange(BaseModel):
+    """Password change request.
+
+    This endpoint previously took a bare dict and checked the length by hand,
+    so the minimum was enforced here but not at user creation. Sharing the
+    Password type keeps the two consistent.
+    """
+
+    password: Password
 
 
 class UserResponse(BaseModel):

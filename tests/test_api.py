@@ -180,8 +180,73 @@ class TestUserManagement:
             json={"password": "short"},
             headers=admin_headers,
         )
-        assert response.status_code == 400
-        assert "at least 6" in response.json()["detail"]
+        # The endpoint validates through the shared Password type now, so the
+        # minimum is reported as a 422 rather than a hand-rolled 400.
+        assert response.status_code == 422
+
+    def test_create_user_too_short_password(self, client, admin_headers):
+        """The minimum used to be enforced on change but not on creation."""
+        response = client.post(
+            "/api/auth/users",
+            json={"username": "shortpw", "password": "1"},
+            headers=admin_headers,
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.parametrize(
+        "password,expected,why",
+        [
+            ("a" * 72, 200, "exactly at bcrypt's limit"),
+            ("a" * 73, 422, "one byte over"),
+            ("é" * 36, 200, "36 two-byte chars = 72 bytes"),
+            ("é" * 37, 422, "37 two-byte chars = 74 bytes"),
+            ("\U0001f600" * 18, 200, "18 four-byte emoji = 72 bytes"),
+            ("\U0001f600" * 19, 422, "19 four-byte emoji = 76 bytes"),
+        ],
+    )
+    def test_password_length_limit_is_counted_in_bytes(
+        self, client, admin_headers, password, expected, why
+    ):
+        """bcrypt's limit is 72 BYTES, not characters.
+
+        Over-long passwords previously reached bcrypt and raised, which the API
+        returned as a 500. Note the emoji cases are far below 72 characters yet
+        still over the byte limit.
+        """
+        response = client.post(
+            "/api/auth/users",
+            json={"username": f"u{len(password)}{expected}", "password": password},
+            headers=admin_headers,
+        )
+        assert response.status_code == expected, why
+
+    def test_over_long_password_is_rejected_not_a_server_error(
+        self, client, admin_headers
+    ):
+        """Regression: this used to be an unhandled ValueError from bcrypt."""
+        response = client.post(
+            "/api/auth/users",
+            json={"username": "longpw", "password": "x" * 200},
+            headers=admin_headers,
+        )
+        assert response.status_code != 500
+        assert response.status_code == 422
+        # The message must name the real limit so it is actionable.
+        assert "72" in str(response.json()["detail"])
+
+    def test_password_at_limit_can_actually_log_in(self, client, admin_headers):
+        """A password accepted at the boundary must still round-trip."""
+        password = "b" * 72
+        client.post(
+            "/api/auth/users",
+            json={"username": "atlimit", "password": password},
+            headers=admin_headers,
+        )
+        login = client.post(
+            "/api/auth/token",
+            data={"username": "atlimit", "password": password},
+        )
+        assert login.status_code == 200
 
     def test_change_password_nonexistent_user(self, client, admin_headers):
         response = client.put(
