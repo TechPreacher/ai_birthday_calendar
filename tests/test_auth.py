@@ -116,3 +116,35 @@ class TestEnsureDefaultAdmin:
         users = user_storage.get_all()
         admin_count = sum(1 for u in users if u.username == "admin")
         assert admin_count == 1
+
+
+class TestTokenExpiryIsTimezoneAware:
+    """create_access_token used datetime.utcnow(), deprecated in 3.12."""
+
+    def test_expiry_is_roughly_the_configured_lifetime(self):
+        from datetime import datetime, timezone
+        from jose import jwt
+        from app.config import ACCESS_TOKEN_EXPIRE_MINUTES
+        from tests.conftest import TEST_SECRET_KEY
+
+        token = create_access_token({"sub": "admin"})
+        exp = jwt.decode(token, TEST_SECRET_KEY, algorithms=["HS256"])["exp"]
+
+        expected = datetime.now(timezone.utc).timestamp() + ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        # A naive/aware mix-up would be out by whole hours; allow a minute.
+        assert abs(exp - expected) < 60
+
+    def test_an_expired_token_is_rejected(self, client):
+        """The sign of the offset must still be interpreted correctly."""
+        from datetime import timedelta
+
+        token = create_access_token({"sub": "admin"}, expires_delta=timedelta(minutes=-5))
+        response = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 401
+
+    def test_a_fresh_token_is_accepted(self, client):
+        from datetime import timedelta
+
+        token = create_access_token({"sub": "admin"}, expires_delta=timedelta(minutes=5))
+        response = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 200

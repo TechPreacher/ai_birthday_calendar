@@ -974,3 +974,29 @@ class TestDocsDisabledByDefault:
         finally:
             monkeypatch.delenv("BIRTHDAYS_ENABLE_DOCS", raising=False)
             importlib.reload(config)
+
+
+class TestLifespanRunsStartupWork:
+    """The @app.on_event hooks became a lifespan handler; it must still run."""
+
+    def test_startup_work_happens_when_the_app_starts(self):
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+
+        with (
+            patch("app.main.ensure_default_admin") as ensure,
+            patch("app.main.migrate_birthdays_add_ids") as migrate,
+            patch("app.main.start_scheduler") as start,
+            patch("app.main.stop_scheduler") as stop,
+        ):
+            from app.main import app
+
+            with TestClient(app) as c:
+                assert c.get("/health").status_code == 200
+                ensure.assert_called_once()
+                migrate.assert_called_once()
+                start.assert_called_once()
+                stop.assert_not_called()
+
+            # Shutdown work runs when the context exits.
+            stop.assert_called_once()
