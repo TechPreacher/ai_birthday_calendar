@@ -15,7 +15,7 @@ from .config import (
     DEFAULT_ADMIN_USERNAME,
     DEFAULT_ADMIN_PASSWORD,
 )
-from .models import User, TokenData
+from .models import BCRYPT_MAX_PASSWORD_BYTES, User, TokenData
 from .storage import user_storage
 
 # OAuth2 scheme
@@ -23,10 +23,18 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/token")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash."""
-    return bcrypt.checkpw(
-        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
-    )
+    """Verify a password against its hash.
+
+    bcrypt raises for anything over 72 bytes rather than truncating. Such a
+    password can never be correct, because passwords are capped at 72 bytes
+    when they are set, so treat it as a mismatch. Letting that exception
+    escape turned the login endpoint into a 500 for anyone submitting a long
+    string -- unauthenticated, on a publicly reachable route.
+    """
+    encoded = plain_password.encode("utf-8")
+    if len(encoded) > BCRYPT_MAX_PASSWORD_BYTES:
+        return False
+    return bcrypt.checkpw(encoded, hashed_password.encode("utf-8"))
 
 
 def get_password_hash(password: str) -> str:
@@ -88,6 +96,16 @@ async def get_current_active_user(
 def ensure_default_admin():
     """Ensure the default admin user exists."""
     if not user_storage.exists(DEFAULT_ADMIN_USERNAME):
+        # This value comes from the environment and bypasses the API's
+        # validation, so check it here rather than letting bcrypt raise an
+        # opaque ValueError during startup.
+        if len(DEFAULT_ADMIN_PASSWORD.encode("utf-8")) > BCRYPT_MAX_PASSWORD_BYTES:
+            raise RuntimeError(
+                f"BIRTHDAYS_ADMIN_PASSWORD is longer than "
+                f"{BCRYPT_MAX_PASSWORD_BYTES} bytes, which bcrypt cannot hash. "
+                "Shorten it and restart."
+            )
+
         admin = User(
             username=DEFAULT_ADMIN_USERNAME,
             hashed_password=get_password_hash(DEFAULT_ADMIN_PASSWORD),

@@ -248,6 +248,156 @@ class TestUserManagement:
         )
         assert login.status_code == 200
 
+    def test_non_admin_can_change_own_password(
+        self, client, admin_headers, regular_headers
+    ):
+        """The gap: a non-admin could never rotate their own credentials."""
+        response = client.put(
+            "/api/auth/users/regular/password",
+            json={"password": "brandnew123", "current_password": "userpass123"},
+            headers=regular_headers,
+        )
+        assert response.status_code == 200
+
+        # The new password works...
+        assert (
+            client.post(
+                "/api/auth/token",
+                data={"username": "regular", "password": "brandnew123"},
+            ).status_code
+            == 200
+        )
+        # ...and the old one no longer does.
+        assert (
+            client.post(
+                "/api/auth/token",
+                data={"username": "regular", "password": "userpass123"},
+            ).status_code
+            == 401
+        )
+
+    def test_own_password_change_requires_the_current_one(
+        self, client, regular_headers
+    ):
+        """A stolen token must not be enough to take the account over."""
+        response = client.put(
+            "/api/auth/users/regular/password",
+            json={"password": "brandnew123"},
+            headers=regular_headers,
+        )
+        assert response.status_code == 400
+        assert "current password" in response.json()["detail"].lower()
+
+        # The password is unchanged.
+        assert (
+            client.post(
+                "/api/auth/token",
+                data={"username": "regular", "password": "userpass123"},
+            ).status_code
+            == 200
+        )
+
+    def test_own_password_change_rejects_a_wrong_current_password(
+        self, client, regular_headers
+    ):
+        response = client.put(
+            "/api/auth/users/regular/password",
+            json={"password": "brandnew123", "current_password": "notmypassword"},
+            headers=regular_headers,
+        )
+        # 400, not 401: a 401 would log the user out of the session they hold.
+        assert response.status_code == 400
+
+    def test_wrong_current_password_does_not_end_the_session(
+        self, client, regular_headers
+    ):
+        """Mistyping must leave the caller still authenticated."""
+        client.put(
+            "/api/auth/users/regular/password",
+            json={"password": "brandnew123", "current_password": "wrong"},
+            headers=regular_headers,
+        )
+        assert client.get("/api/auth/me", headers=regular_headers).status_code == 200
+
+    def test_non_admin_cannot_change_someone_elses_password(
+        self, client, admin_headers, regular_headers
+    ):
+        client.post(
+            "/api/auth/users",
+            json={"username": "victim", "password": "victimpass"},
+            headers=admin_headers,
+        )
+        response = client.put(
+            "/api/auth/users/victim/password",
+            json={"password": "hijacked123", "current_password": "userpass123"},
+            headers=regular_headers,
+        )
+        assert response.status_code == 403
+
+        # The victim's password still works.
+        assert (
+            client.post(
+                "/api/auth/token",
+                data={"username": "victim", "password": "victimpass"},
+            ).status_code
+            == 200
+        )
+
+    def test_non_admin_gets_403_not_404_for_an_unknown_user(
+        self, client, regular_headers
+    ):
+        """Permission is checked before existence, so no user enumeration."""
+        response = client.put(
+            "/api/auth/users/ghost/password",
+            json={"password": "whatever123", "current_password": "userpass123"},
+            headers=regular_headers,
+        )
+        assert response.status_code == 403
+
+    def test_admin_changing_someone_else_needs_no_current_password(
+        self, client, admin_headers
+    ):
+        """Unchanged behaviour: an admin does not know the other password."""
+        client.post(
+            "/api/auth/users",
+            json={"username": "other", "password": "otherpass"},
+            headers=admin_headers,
+        )
+        response = client.put(
+            "/api/auth/users/other/password",
+            json={"password": "resetbyadmin"},
+            headers=admin_headers,
+        )
+        assert response.status_code == 200
+
+    def test_admin_changing_own_password_needs_the_current_one(
+        self, client, admin_headers
+    ):
+        """Self-change is self-change; the admin session is the best target."""
+        response = client.put(
+            "/api/auth/users/admin/password",
+            json={"password": "newadminpass"},
+            headers=admin_headers,
+        )
+        assert response.status_code == 400
+
+        ok = client.put(
+            "/api/auth/users/admin/password",
+            json={"password": "newadminpass", "current_password": "testpass123"},
+            headers=admin_headers,
+        )
+        assert ok.status_code == 200
+
+    def test_self_change_still_enforces_password_rules(
+        self, client, regular_headers
+    ):
+        response = client.put(
+            "/api/auth/users/regular/password",
+            json={"password": "x" * 200, "current_password": "userpass123"},
+            headers=regular_headers,
+        )
+        assert response.status_code == 422
+
     def test_change_password_nonexistent_user(self, client, admin_headers):
         response = client.put(
             "/api/auth/users/ghost/password",

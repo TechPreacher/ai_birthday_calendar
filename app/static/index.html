@@ -28,6 +28,7 @@
                 <select id="yearSelector"></select>
                 <button id="todayBtn" class="btn-secondary">Today</button>
                 <button id="settingsBtn" class="btn-secondary">⚙️ Settings</button>
+                <button id="myPasswordBtn" class="btn-secondary">🔑 Password</button>
                 <button id="logoutBtn" class="btn-secondary">Logout</button>
             </div>
         </nav>
@@ -211,8 +212,15 @@
             <h2>Change Password</h2>
             <p>Changing password for: <strong id="passwordChangeUsername"></strong></p>
             <form id="changePasswordForm">
+                <!-- Shown only when changing your own password. An admin
+                     changing someone else's does not know their password. -->
+                <div id="currentPasswordRow" hidden>
+                    <label>Current Password *</label>
+                    <input type="password" id="currentPasswordInput" autocomplete="current-password">
+                </div>
+
                 <label>New Password *</label>
-                <input type="password" id="changePasswordInput" required minlength="6" placeholder="Minimum 6 characters">
+                <input type="password" id="changePasswordInput" required minlength="6" placeholder="Minimum 6 characters" autocomplete="new-password">
                 
                 <label>Confirm Password *</label>
                 <input type="password" id="confirmPasswordInput" required minlength="6">

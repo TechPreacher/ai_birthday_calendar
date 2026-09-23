@@ -9,6 +9,7 @@ from ..auth import (
     create_access_token,
     get_current_active_user,
     get_password_hash,
+    verify_password,
 )
 from ..storage import user_storage
 
@@ -85,13 +86,35 @@ async def change_user_password(
     password_data: PasswordChange,
     current_user: User = Depends(get_current_active_user),
 ):
-    """Change a user's password (admin only)."""
-    if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    """Change a password.
+
+    Any user may change their own. Only an admin may change someone else's,
+    and does so without needing that person's current password.
+
+    Changing your own requires the current password. Tokens live in the
+    browser's localStorage for 24 hours, so without this check anyone who got
+    hold of one could set a new password and lock the owner out.
+    """
+    changing_own_password = username == current_user.username
+
+    if not changing_own_password and not current_user.is_admin:
+        raise HTTPException(
+            status_code=403, detail="You may only change your own password"
+        )
 
     user = user_storage.get_by_username(username)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if changing_own_password:
+        supplied = password_data.current_password
+        if not supplied or not verify_password(supplied, user.hashed_password):
+            # Deliberately 400 rather than 401: the frontend logs out on any
+            # 401, and mistyping your current password should not end the
+            # session you are already holding.
+            raise HTTPException(
+                status_code=400, detail="Current password is incorrect"
+            )
 
     # Length is validated by the Password type on PasswordChange, so the value
     # is guaranteed to be within bcrypt's 72-byte limit before it is hashed.

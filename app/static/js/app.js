@@ -95,6 +95,7 @@ function setupEventListeners() {
     document.getElementById('yearSelector').addEventListener('change', handleYearChange);
     document.getElementById('todayBtn').addEventListener('click', goToToday);
     document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
+    document.getElementById('myPasswordBtn').addEventListener('click', openMyPasswordModal);
     document.getElementById('bdayMonth').addEventListener('change', updateDayOptions);
     document.getElementById('emailEnabled').addEventListener('change', toggleEmailSettings);
     document.getElementById('aiEnabled').addEventListener('change', toggleAISettings);
@@ -929,7 +930,25 @@ function openChangePasswordModal(username) {
     document.getElementById('passwordChangeUsername').textContent = username;
     document.getElementById('passwordChangeUsernameHidden').value = username;
     document.getElementById('changePasswordForm').reset();
+
+    // Changing your own password requires the current one; an admin changing
+    // someone else's does not know it. Note this is only which field to show
+    // -- the server decides, and enforces it either way.
+    const changingOwn = !!(currentUser && username === currentUser.username);
+    const row = document.getElementById('currentPasswordRow');
+    row.hidden = !changingOwn;
+    document.getElementById('currentPasswordInput').required = changingOwn;
+
     document.getElementById('changePasswordModal').style.display = 'block';
+}
+
+// Entry point for the header button: every user can change their own password,
+// including those with no access to the settings screen at all.
+function openMyPasswordModal() {
+    if (!currentUser) {
+        return;
+    }
+    openChangePasswordModal(currentUser.username);
 }
 
 function closeChangePasswordModal() {
@@ -942,24 +961,36 @@ async function handleChangePassword(e) {
     const username = document.getElementById('passwordChangeUsernameHidden').value;
     const newPassword = document.getElementById('changePasswordInput').value;
     const confirmPassword = document.getElementById('confirmPasswordInput').value;
-    
+    const currentPassword = document.getElementById('currentPasswordInput').value;
+    const changingOwn = !!(currentUser && username === currentUser.username);
+
     if (newPassword !== confirmPassword) {
         alert('Passwords do not match!');
         return;
     }
-    
+
     if (newPassword.length < 6) {
         alert('Password must be at least 6 characters');
         return;
     }
-    
+
+    if (changingOwn && !currentPassword) {
+        alert('Please enter your current password.');
+        return;
+    }
+
+    const payload = { password: newPassword };
+    if (changingOwn) {
+        payload.current_password = currentPassword;
+    }
+
     try {
         const response = await apiFetch(`/api/auth/users/${encodeURIComponent(username)}/password`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ password: newPassword })
+            body: JSON.stringify(payload)
         });
         
         if (response.ok) {
