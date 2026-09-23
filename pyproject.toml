@@ -26,6 +26,15 @@ dev = [
     "ruff>=0.4.0",
 ]
 
+[tool.pytest.ini_options]
+# Pydantic's v1 compatibility shims (.dict(), .copy(), ...) are removed in
+# Pydantic v3. Treating their deprecation warnings as errors means the suite
+# fails the moment one is reintroduced, rather than the project quietly
+# accumulating them again until an upgrade breaks.
+filterwarnings = [
+    "error::pydantic.PydanticDeprecatedSince20",
+]
+
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"

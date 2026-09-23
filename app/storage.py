@@ -106,7 +106,7 @@ class UserStorage(JSONStorage):
         if any(u.get("username") == user.username for u in data["users"]):
             raise ValueError(f"User {user.username} already exists")
 
-        data["users"].append(user.dict())
+        data["users"].append(user.model_dump())
         self._write(data)
         return user
 
@@ -117,7 +117,7 @@ class UserStorage(JSONStorage):
 
         for i, u in enumerate(users):
             if u.get("username") == username:
-                users[i] = user.dict()
+                users[i] = user.model_dump()
                 self._write(data)
                 return user
 
@@ -166,7 +166,7 @@ class BirthdayStorage(JSONStorage):
         if not birthday.id:
             birthday.id = str(uuid.uuid4())
 
-        data["birthdays"].append(birthday.dict())
+        data["birthdays"].append(birthday.model_dump())
         self._write(data)
         return birthday
 
@@ -178,7 +178,7 @@ class BirthdayStorage(JSONStorage):
         for i, b in enumerate(birthdays):
             if b.get("id") == birthday_id:
                 birthday.id = birthday_id  # Preserve ID
-                birthdays[i] = birthday.dict()
+                birthdays[i] = birthday.model_dump()
                 self._write(data)
                 return birthday
 
@@ -199,7 +199,7 @@ class BirthdayStorage(JSONStorage):
 
     def save_all(self, birthdays: List[Birthday]):
         """Save all birthdays (used for migration/bulk update)."""
-        data = {"birthdays": [b.dict() for b in birthdays]}
+        data = {"birthdays": [b.model_dump() for b in birthdays]}
         self._write(data)
 
 
@@ -216,7 +216,7 @@ class SettingsStorage(JSONStorage):
     def save_email_settings(self, settings: EmailSettings):
         """Save email settings."""
         data = self._read()
-        data["email"] = settings.dict()
+        data["email"] = settings.model_dump()
         self._write(data)
 
 
